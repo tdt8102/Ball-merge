@@ -1,0 +1,297 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+/// <summary>
+/// Whole game in one component: builds the playfield, handles drop input, merging,
+/// score and game over. Put it on an empty GameObject in a scene with an orthographic camera.
+/// </summary>
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+
+    // ---- Layout (world units). Container inner width = 6, floor top at FloorY. ----
+    const float HalfWidth = 3f;
+    const float FloorY = -5.2f;
+    const float WallTopY = 3.8f;
+    const float DangerY = 3.0f;       // fruits resting above this line for too long = game over
+    const float SpawnY = 4.5f;        // dropper height
+    const float WallThickness = 0.5f;
+    const float ViewWidth = 7.4f;     // world width always visible on screen
+    const float MinViewHeightHalf = 6.6f;
+
+    const float DropCooldown = 0.45f;
+    const float GameOverDelay = 2.0f;
+    const float DangerGrace = 1.2f;   // a freshly dropped fruit may be above the line this long
+
+    public int Score { get; private set; }
+    public int Best { get; private set; }
+    public int NextLevel { get; private set; }
+    public bool IsGameOver { get; private set; }
+
+    GameUI _ui;
+    PhysicsMaterial2D _mat;
+    readonly List<Fruit> _fruits = new List<Fruit>();
+    Fruit _held;
+    SpriteRenderer _aimLine, _dangerLine;
+    float _aimX, _dangerTimer, _cooldown;
+    bool _aiming;
+    int _combo;
+    float _lastMergeTime = -100f;
+    const float ComboWindow = 1.2f;   // max gap between merges to count as a combo
+
+    void Awake()
+    {
+        Instance = this;
+        Application.targetFrameRate = 60;
+        Physics2D.gravity = new Vector2(0f, -20f);
+        Best = PlayerPrefs.GetInt("best", 0);
+
+        _mat = new PhysicsMaterial2D("Fruit") { friction = 0.35f, bounciness = 0.08f };
+
+        SetupCamera();
+        BuildPlayfield();
+        _ui = new GameObject("UI").AddComponent<GameUI>();
+        _ui.Build(this);
+    }
+
+    void Start() => NewGame();
+
+    // ------------------------------------------------------------------ setup
+
+    void SetupCamera()
+    {
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            var go = new GameObject("Main Camera") { tag = "MainCamera" };
+            cam = go.AddComponent<Camera>();
+        }
+        cam.orthographic = true;
+        cam.transform.position = new Vector3(0, 0, -10);
+        cam.backgroundColor = new Color(0.98f, 0.93f, 0.84f);
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        // Fit width first; make sure the full height is visible too.
+        cam.orthographicSize = Mathf.Max(ViewWidth / cam.aspect * 0.5f, MinViewHeightHalf);
+    }
+
+    void BuildPlayfield()
+    {
+        var root = new GameObject("Playfield").transform;
+
+        // background panel
+        float h = WallTopY - FloorY;
+        Quad(root, "Panel", new Vector2(0, FloorY + h * 0.5f), new Vector2(HalfWidth * 2, h),
+             new Color(1f, 0.97f, 0.9f), -10);
+
+        Color wallCol = new Color(0.55f, 0.36f, 0.24f);
+        float wallH = 20f;
+        // left / right / floor (colliders + visuals)
+        Wall(root, "WallL", new Vector2(-HalfWidth - WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness),
+             new Vector2(WallThickness, wallH), wallCol, visibleTop: WallTopY);
+        Wall(root, "WallR", new Vector2(HalfWidth + WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness),
+             new Vector2(WallThickness, wallH), wallCol, visibleTop: WallTopY);
+        Wall(root, "Floor", new Vector2(0, FloorY - WallThickness * 0.5f),
+             new Vector2(HalfWidth * 2 + WallThickness * 2, WallThickness), wallCol, visibleTop: float.MaxValue);
+
+        // danger line
+        _dangerLine = Quad(root, "DangerLine", new Vector2(0, DangerY), new Vector2(HalfWidth * 2, 0.06f),
+                           new Color(0.9f, 0.2f, 0.2f, 0.45f), 0);
+        // aim guide
+        _aimLine = Quad(root, "Aim", new Vector2(0, (SpawnY + FloorY) * 0.5f), new Vector2(0.04f, SpawnY - FloorY),
+                        new Color(0.3f, 0.3f, 0.3f, 0.18f), 0);
+    }
+
+    static SpriteRenderer Quad(Transform parent, string name, Vector2 pos, Vector2 size, Color color, int order)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.position = pos;
+        go.transform.localScale = size;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = SpriteFactory.Square;
+        sr.color = color;
+        sr.sortingOrder = order;
+        return sr;
+    }
+
+    void Wall(Transform parent, string name, Vector2 pos, Vector2 size, Color color, float visibleTop)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.position = pos;
+        var box = go.AddComponent<BoxCollider2D>();
+        box.size = size;
+        box.sharedMaterial = _mat;
+
+        // visual clipped to the visible container height
+        float top = Mathf.Min(pos.y + size.y * 0.5f, visibleTop);
+        float bottom = pos.y - size.y * 0.5f;
+        var v = Quad(go.transform, "Visual", Vector2.zero, Vector2.one, color, 5);
+        v.transform.position = new Vector3(pos.x, (top + bottom) * 0.5f, 0);
+        v.transform.localScale = new Vector3(size.x, top - bottom, 1);
+    }
+
+    // ------------------------------------------------------------------ flow
+
+    public void NewGame()
+    {
+        foreach (var f in _fruits) if (f != null) Destroy(f.gameObject);
+        _fruits.Clear();
+        if (_held != null) Destroy(_held.gameObject);
+        _held = null;
+
+        Score = 0;
+        IsGameOver = false;
+        _dangerTimer = 0f;
+        _combo = 0;
+        _lastMergeTime = -100f;
+        _cooldown = 0.2f;
+        _aiming = false;
+        _aimX = 0f;
+        NextLevel = FruitDatabase.RandomDropLevel();
+        _ui.Refresh();
+        _ui.ShowGameOver(false);
+    }
+
+    void SpawnHeld()
+    {
+        _held = Fruit.Create(NextLevel, new Vector2(_aimX, SpawnY), _mat, preview: true);
+        _fruits.Add(_held);
+        NextLevel = FruitDatabase.RandomDropLevel();
+        _ui.Refresh();
+    }
+
+    void Update()
+    {
+        if (IsGameOver) return;
+
+        if (_held == null)
+        {
+            _cooldown -= Time.deltaTime;
+            if (_cooldown <= 0f) SpawnHeld();
+        }
+
+        HandleInput();
+        CheckDanger();
+    }
+
+    void HandleInput()
+    {
+        if (_held == null) { _aimLine.enabled = false; return; }
+        _aimLine.enabled = true;
+
+        if (Input.GetMouseButtonDown(0) && !PointerOverUI()) _aiming = true;
+        if (_aiming && Input.GetMouseButton(0)) _aimX = PointerWorldX();
+
+        float limit = HalfWidth - _held.Radius;
+        _aimX = Mathf.Clamp(_aimX, -limit, limit);
+        _held.transform.position = new Vector3(_aimX, SpawnY, 0);
+        _aimLine.transform.position = new Vector3(_aimX, (SpawnY + FloorY) * 0.5f, 0);
+
+        if (_aiming && Input.GetMouseButtonUp(0))
+        {
+            _aiming = false;
+            _held.Release();
+            _held = null;
+            _cooldown = DropCooldown;
+        }
+    }
+
+    static bool PointerOverUI()
+    {
+        if (EventSystem.current == null) return false;
+        int id = Input.touchCount > 0 ? Input.GetTouch(0).fingerId : -1;
+        return EventSystem.current.IsPointerOverGameObject(id);
+    }
+
+    static float PointerWorldX() => Camera.main.ScreenToWorldPoint(Input.mousePosition).x;
+
+    // ------------------------------------------------------------------ merging
+
+    public void Merge(Fruit a, Fruit b)
+    {
+        if (IsGameOver) return;
+        a.Merging = b.Merging = true;
+        int level = a.Level;
+        Vector2 pos = (a.transform.position + b.transform.position) * 0.5f;
+
+        // combo: merges that follow each other within ComboWindow seconds
+        _combo = Time.time - _lastMergeTime <= ComboWindow ? _combo + 1 : 1;
+        _lastMergeTime = Time.time;
+        if (_combo >= 2) _ui.ShowCombo(pos, _combo);
+        Color col = FruitDatabase.Colors[level];
+
+        _fruits.Remove(a);
+        _fruits.Remove(b);
+        Destroy(a.gameObject);
+        Destroy(b.gameObject);
+        StartCoroutine(Ring(pos, FruitDatabase.Radius[level], col));
+
+        if (level >= FruitDatabase.MaxLevel)
+        {
+            AddScore(100);          // two biggest fruits: vanish for a bonus
+            return;
+        }
+
+        var n = Fruit.Create(level + 1, pos, _mat, preview: false);
+        _fruits.Add(n);
+        AddScore(FruitDatabase.Score[level + 1]);
+    }
+
+    void AddScore(int amount)
+    {
+        Score += amount;
+        if (Score > Best)
+        {
+            Best = Score;
+            PlayerPrefs.SetInt("best", Best);
+        }
+        _ui.Refresh();
+    }
+
+    IEnumerator Ring(Vector2 pos, float radius, Color color)
+    {
+        var go = new GameObject("Ring");
+        go.transform.position = pos;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = SpriteFactory.Circle;
+        sr.sortingOrder = 3;
+        for (float t = 0; t < 1f; t += Time.deltaTime / 0.25f)
+        {
+            go.transform.localScale = Vector3.one * Mathf.Lerp(radius * 2f, radius * 3.2f, t);
+            sr.color = new Color(color.r, color.g, color.b, 0.6f * (1f - t));
+            yield return null;
+        }
+        Destroy(go);
+    }
+
+    // ------------------------------------------------------------------ game over
+
+    void CheckDanger()
+    {
+        bool danger = false;
+        foreach (var f in _fruits)
+        {
+            if (f == null || !f.Dropped || f.Merging || f.Age < DangerGrace) continue;
+            if (f.transform.position.y + f.Radius > DangerY && f.Speed < 0.6f) { danger = true; break; }
+        }
+
+        _dangerTimer = danger ? _dangerTimer + Time.deltaTime : 0f;
+
+        // blink the line while in danger
+        float pulse = danger ? 0.45f + 0.45f * Mathf.Abs(Mathf.Sin(Time.time * 8f)) : 0.45f;
+        _dangerLine.color = new Color(0.9f, 0.2f, 0.2f, pulse);
+
+        if (_dangerTimer >= GameOverDelay) GameOver();
+    }
+
+    void GameOver()
+    {
+        IsGameOver = true;
+        _aimLine.enabled = false;
+        if (_held != null) { Destroy(_held.gameObject); _held = null; }
+        _ui.ShowGameOver(true);
+    }
+}
