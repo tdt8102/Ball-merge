@@ -12,3 +12,6 @@
 *.pidb.meta
 *.pdb.meta
 *.mdb.meta
+
+# Web build is committed (Vercel). The Build/ rule above would hide WebBuild/Build/.
+!/WebBuild/Build/

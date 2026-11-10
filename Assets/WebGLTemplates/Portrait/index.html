@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <title>{{{ PRODUCT_NAME }}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    html, body { margin: 0; height: 100%; background: #1d1612; overflow: hidden; touch-action: none; }
+    body { display: flex; align-items: center; justify-content: center; }
+    /* portrait 9:16 canvas that always fits the window */
+    #unity-canvas {
+      width: min(100vw, 56.25vh);
+      height: min(100vh, 177.78vw);
+      background: #faeed6;
+      display: block;
+    }
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+               flex-direction: column; color: #4a3a30; font: 600 18px sans-serif; }
+    #bar { width: 200px; height: 8px; background: #e2d3b8; border-radius: 4px; margin-top: 12px; overflow: hidden; }
+    #fill { width: 0%; height: 100%; background: #f4b942; }
+  </style>
+</head>
+<body>
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
+  <div id="loading">Loading...<div id="bar"><div id="fill"></div></div></div>
+  <script src="Build/{{{ LOADER_FILENAME }}}"></script>
+  <script>
+    createUnityInstance(document.querySelector("#unity-canvas"), {
+      dataUrl: "Build/{{{ DATA_FILENAME }}}",
+      frameworkUrl: "Build/{{{ FRAMEWORK_FILENAME }}}",
+      codeUrl: "Build/{{{ CODE_FILENAME }}}",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+      productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+      productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+    }, function (p) { document.getElementById("fill").style.width = (p * 100) + "%"; })
+    .then(function () { document.getElementById("loading").style.display = "none"; })
+    .catch(function (m) { document.getElementById("loading").textContent = "Error: " + m; });
+  </script>
+</body>
+</html>
