@@ -9,6 +9,9 @@ public class GameUI : MonoBehaviour
     Text _score, _best, _finalScore;
     Image _nextIcon;
     GameObject _gameOver;
+    Button _sndBtn, _hapBtn;
+    float _pop;
+    int _lastScore;
 
     public void Build(GameManager gm)
     {
@@ -42,7 +45,26 @@ public class GameUI : MonoBehaviour
 
         // --- restart (top-center-right) ---
         var restart = Button(root, "RestartSmall", "RESTART", 34, new Vector2(1, 1), new Vector2(-190, -250), new Vector2(200, 64), new Color(0.55f, 0.36f, 0.24f));
-        restart.onClick.AddListener(() => _gm.NewGame());
+        restart.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
+
+        // --- sound / haptic toggles (under BEST) ---
+        _sndBtn = Button(root, "SoundToggle", "", 30, new Vector2(0, 1), new Vector2(135, -250), new Vector2(190, 64), Color.gray);
+        _sndBtn.onClick.AddListener(() =>
+        {
+            var a = AudioManager.Instance;
+            a.SetMuted(!a.Muted);
+            a.Click();                       // audible only when turning sound ON
+            RefreshToggles();
+        });
+        _hapBtn = Button(root, "HapticToggle", "", 30, new Vector2(0, 1), new Vector2(345, -250), new Vector2(190, 64), Color.gray);
+        _hapBtn.onClick.AddListener(() =>
+        {
+            Haptics.Enabled = !Haptics.Enabled;
+            AudioManager.Instance.Click();
+            if (Haptics.Enabled) Haptics.Medium();   // let the player feel it
+            RefreshToggles();
+        });
+        RefreshToggles();
 
         // --- evolution chain (bottom) ---
         const float slot = 90f;
@@ -62,13 +84,37 @@ public class GameUI : MonoBehaviour
         Label(go, "Title", "GAME OVER", 120, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 220), new Vector2(900, 160));
         _finalScore = Label(go, "Final", "0", 100, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(900, 140));
         var again = Button(go, "Again", "PLAY AGAIN", 60, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(520, 130), new Color(0.2f, 0.65f, 0.4f));
-        again.onClick.AddListener(() => _gm.NewGame());
+        again.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
         _gameOver.SetActive(false);
+    }
+
+    void RefreshToggles()
+    {
+        SetToggle(_sndBtn, "SOUND", !AudioManager.Instance.Muted);
+        SetToggle(_hapBtn, "HAPTIC", Haptics.Enabled);
+    }
+
+    static void SetToggle(Button b, string label, bool on)
+    {
+        b.GetComponentInChildren<Text>().text = label + (on ? " ON" : " OFF");
+        ((Image)b.targetGraphic).color = on ? new Color(0.2f, 0.65f, 0.4f) : new Color(0.6f, 0.55f, 0.5f);
+    }
+
+    void Update()
+    {
+        // score "bump" when it increases
+        if (_pop > 0f)
+        {
+            _pop = Mathf.Max(0f, _pop - Time.deltaTime * 4f);
+            _score.rectTransform.localScale = Vector3.one * (1f + 0.3f * _pop);
+        }
     }
 
     public void Refresh()
     {
         if (_gm == null || _score == null) return;
+        if (_gm.Score > _lastScore) _pop = 1f;
+        _lastScore = _gm.Score;
         _score.text = _gm.Score.ToString();
         _best.text = "BEST " + _gm.Best;
         _nextIcon.color = FruitDatabase.Colors[_gm.NextLevel];

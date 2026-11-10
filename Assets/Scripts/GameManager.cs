@@ -38,7 +38,7 @@ public class GameManager : MonoBehaviour
     float _aimX, _dangerTimer, _cooldown;
     bool _aiming;
     int _combo;
-    float _lastMergeTime = -100f;
+    float _lastMergeTime = -100f, _warnT;
     const float ComboWindow = 1.2f;   // max gap between merges to count as a combo
 
     void Awake()
@@ -51,6 +51,8 @@ public class GameManager : MonoBehaviour
         _mat = new PhysicsMaterial2D("Fruit") { friction = 0.35f, bounciness = 0.08f };
 
         SetupCamera();
+        new GameObject("Audio").AddComponent<AudioManager>();
+        new GameObject("Fx").AddComponent<Fx>();
         BuildPlayfield();
         _ui = new GameObject("UI").AddComponent<GameUI>();
         _ui.Build(this);
@@ -194,6 +196,7 @@ public class GameManager : MonoBehaviour
         {
             _aiming = false;
             _held.Release();
+            AudioManager.Instance.Drop();
             _held = null;
             _cooldown = DropCooldown;
         }
@@ -229,9 +232,19 @@ public class GameManager : MonoBehaviour
         Destroy(b.gameObject);
         StartCoroutine(Ring(pos, FruitDatabase.Radius[level], col));
 
+        // juice: sound, sparks, haptic, shake (scaled by fruit level / combo)
+        AudioManager.Instance.Merge(level, _combo);
+        Fx.Instance.Burst(pos, col, 6 + level * 2, 2.5f + level * 0.3f);
+        Haptics.Pulse(level);
+        if (level >= 7) Fx.Instance.Shake(0.04f + 0.012f * (level - 7), 0.22f);
+        else if (_combo >= 4) Fx.Instance.Shake(0.03f, 0.15f);
+
         if (level >= FruitDatabase.MaxLevel)
         {
             AddScore(100);          // two biggest fruits: vanish for a bonus
+            AudioManager.Instance.Fanfare();
+            foreach (var c in FruitDatabase.Colors) Fx.Instance.Burst(pos, c, 5, 6f, 0.2f);
+            Fx.Instance.Shake(0.25f, 0.4f);
             return;
         }
 
@@ -280,6 +293,16 @@ public class GameManager : MonoBehaviour
 
         _dangerTimer = danger ? _dangerTimer + Time.deltaTime : 0f;
 
+        // scared faces + warning tick while in danger
+        foreach (var f in _fruits) if (f != null) f.Worried = danger;
+        _warnT -= Time.deltaTime;
+        if (danger && _warnT <= 0f)
+        {
+            _warnT = 0.5f;
+            AudioManager.Instance.Warn();
+            Haptics.Light();
+        }
+
         // blink the line while in danger
         float pulse = danger ? 0.45f + 0.45f * Mathf.Abs(Mathf.Sin(Time.time * 8f)) : 0.45f;
         _dangerLine.color = new Color(0.9f, 0.2f, 0.2f, pulse);
@@ -292,6 +315,9 @@ public class GameManager : MonoBehaviour
         IsGameOver = true;
         _aimLine.enabled = false;
         if (_held != null) { Destroy(_held.gameObject); _held = null; }
+        AudioManager.Instance.GameOver();
+        Haptics.Heavy();
+        Fx.Instance.Shake(0.15f, 0.5f);
         _ui.ShowGameOver(true);
     }
 }

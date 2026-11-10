@@ -10,8 +10,12 @@ public class Fruit : MonoBehaviour
     public float Age { get; private set; }          // seconds since released
     public Rigidbody2D Body { get; private set; }
 
+    public bool Worried { get; set; }               // set by GameManager when the stack is too high
+
+    const float EyeSize = 0.16f;
     Transform _visual;
-    float _popT = 1f;
+    readonly Transform[] _eyes = new Transform[2];
+    float _popT = 1f, _blipIn, _lastImpact;
 
     public float Speed
     {
@@ -69,19 +73,34 @@ public class Fruit : MonoBehaviour
         else { Dropped = true; _popT = 0f; }
     }
 
-    static void AddEyes(Transform parent)
+    void AddEyes(Transform parent)
     {
+        int i = 0;
         foreach (float sx in new[] { -0.2f, 0.2f })
         {
             var eye = new GameObject("Eye").transform;
             eye.SetParent(parent, false);
             eye.localPosition = new Vector3(sx, 0.06f, 0);
-            eye.localScale = Vector3.one * 0.16f;
+            eye.localScale = Vector3.one * EyeSize;
             var r = eye.gameObject.AddComponent<SpriteRenderer>();
             r.sprite = SpriteFactory.Circle;
             r.color = new Color(0.12f, 0.1f, 0.15f);
             r.sortingOrder = 2;
+            _eyes[i++] = eye;
         }
+        _blipIn = Random.Range(1f, 4f);
+    }
+
+    void AnimateEyes()
+    {
+        // blink every few seconds; eyes widen when the stack is near the danger line
+        _blipIn -= Time.deltaTime;
+        if (_blipIn <= -0.12f) _blipIn = Random.Range(2f, 5f);
+        float open = _blipIn < 0f ? 0.1f : 1f;
+        float size = EyeSize * (Worried ? 1.5f : 1f);
+        var s = new Vector3(size, size * open, 1f);
+        _eyes[0].localScale = s;
+        _eyes[1].localScale = s;
     }
 
     /// <summary>Release from the dropper.</summary>
@@ -94,6 +113,7 @@ public class Fruit : MonoBehaviour
     void Update()
     {
         if (Dropped) Age += Time.deltaTime;
+        AnimateEyes();
 
         // little squash-pop when freshly created by a merge
         if (_popT < 1f)
@@ -104,8 +124,24 @@ public class Fruit : MonoBehaviour
         }
     }
 
-    void OnCollisionEnter2D(Collision2D c) => TryMerge(c);
+    void OnCollisionEnter2D(Collision2D c)
+    {
+        TryMerge(c);
+        if (Dropped && !Merging) Impact(c);
+    }
+
     void OnCollisionStay2D(Collision2D c) => TryMerge(c);
+
+    /// <summary>Knock sound + a little dust when landing hard.</summary>
+    void Impact(Collision2D c)
+    {
+        float v = c.relativeVelocity.magnitude;
+        if (v < 2.2f || Time.time - _lastImpact < 0.07f) return;
+        _lastImpact = Time.time;
+        if (AudioManager.Instance != null) AudioManager.Instance.Tock(v, Radius);
+        if (v > 5f && Fx.Instance != null && c.contactCount > 0)
+            Fx.Instance.Burst(c.GetContact(0).point, new Color(0.85f, 0.78f, 0.68f), 3, 1.2f, 0.08f);
+    }
 
     void TryMerge(Collision2D c)
     {
