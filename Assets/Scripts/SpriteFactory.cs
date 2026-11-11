@@ -33,6 +33,36 @@ public static class SpriteFactory
         }
     }
 
+    static Sprite _rounded;
+
+    /// <summary>
+    /// White rounded rectangle for 9-slice use (Image.Type.Sliced / SpriteRenderer Sliced). The corner radius is
+    /// 48 px = 0.48 world units at the default 100 ppu; on a uGUI Image set pixelsPerUnitMultiplier = 48 / wantedRadius.
+    /// </summary>
+    public static Sprite RoundedRect
+    {
+        get
+        {
+            if (_rounded != null) return _rounded;
+            const int size = 128, r = 48;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[size * size];
+            float half = size * 0.5f;
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float qx = Mathf.Abs(x + 0.5f - half) - (half - r);
+                float qy = Mathf.Abs(y + 0.5f - half) - (half - r);
+                float d = Mathf.Sqrt(Mathf.Max(qx, 0) * Mathf.Max(qx, 0) + Mathf.Max(qy, 0) * Mathf.Max(qy, 0)) + Mathf.Min(Mathf.Max(qx, qy), 0) - r;
+                px[y * size + x] = new Color32(255, 255, 255, (byte)(255 * Mathf.Clamp01(0.5f - d)));   // 1px anti-aliased edge
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            _rounded = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(r, r, r, r));
+            return _rounded;
+        }
+    }
+
     /// <summary>1x1 world-unit white square.</summary>
     public static Sprite Square
     {

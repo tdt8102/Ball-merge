@@ -73,7 +73,7 @@ public class MenuController : MonoBehaviour
         var p = (RectTransform)_menuPanel.transform;
         var brown = new Color(0.36f, 0.22f, 0.15f);
 
-        var title = GameUI.Label(p, "Title", "CAT MERGE", 150, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 600), new Vector2(1000, 200));
+        var title = GameUI.Label(p, "Title", "CatCatCat", 150, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 600), new Vector2(1000, 200));
         title.color = brown;
         Outline(title, Color.white, 4);
         var sub = GameUI.Label(p, "Sub", "Drop and merge the cats!", 46, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 470), new Vector2(1000, 70));
@@ -110,8 +110,8 @@ public class MenuController : MonoBehaviour
         _loadingText = GameUI.Label(p, "LoadingText", "Loading", 70, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, -60), new Vector2(800, 100));
         _loadingText.color = brown;
 
-        var track = GameUI.Img(p, "BarTrack", SpriteFactory.Square, new Color(0.85f, 0.75f, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(0, -180), new Vector2(BarWidth, 36));
-        var fill = GameUI.Img((RectTransform)track.transform, "BarFill", SpriteFactory.Square, new Color(0.95f, 0.6f, 0.2f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(0, 36));
+        var track = GameUI.RoundImg(p, "BarTrack", new Color(0.85f, 0.75f, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(0, -180), new Vector2(BarWidth, 36), 18f);
+        var fill = GameUI.RoundImg((RectTransform)track.transform, "BarFill", new Color(0.95f, 0.6f, 0.2f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(0, 36), 18f);
         _barFill = fill.rectTransform;
         _barFill.pivot = new Vector2(0, 0.5f);
 

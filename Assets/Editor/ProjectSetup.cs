@@ -13,7 +13,7 @@ public static class ProjectSetup
     {
         // --- portrait player settings ---
         PlayerSettings.companyName = "Proto";
-        PlayerSettings.productName = "Cat Merge";
+        PlayerSettings.productName = "CatCatCat";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
         PlayerSettings.allowedAutorotateToLandscapeLeft = false;
         PlayerSettings.allowedAutorotateToLandscapeRight = false;

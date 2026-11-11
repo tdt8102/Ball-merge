@@ -22,7 +22,7 @@ public static class WebGLBuilder
 
     static bool Build()
     {
-        PlayerSettings.productName = "Cat Merge";
+        PlayerSettings.productName = "CatCatCat";
         PlayerSettings.WebGL.template = "PROJECT:Portrait";
         // No compression so it can be hosted on GitHub Pages / any static host as-is.
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;

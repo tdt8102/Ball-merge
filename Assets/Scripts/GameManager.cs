@@ -29,6 +29,7 @@ public class GameManager : MonoBehaviour
     public int Best { get; private set; }
     public int NextLevel { get; private set; }
     public bool IsGameOver { get; private set; }
+    public bool Paused { get; set; }               // settings panel open
     public int FruitCount => _fruits.Count;
 
     GameUI _ui;
@@ -45,6 +46,7 @@ public class GameManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        Time.timeScale = 1f;                // in case the previous scene was left while paused
 #if !UNITY_WEBGL
         Application.targetFrameRate = 60;   // WebGL: keep the default (requestAnimationFrame); a fixed target makes it use setTimeout and stutter on phones
 #endif
@@ -93,13 +95,23 @@ public class GameManager : MonoBehaviour
 
         Color wallCol = new Color(0.55f, 0.36f, 0.24f);
         float wallH = 20f;
-        // left / right / floor (colliders + visuals)
-        Wall(root, "WallL", new Vector2(-HalfWidth - WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness),
-             new Vector2(WallThickness, wallH), wallCol, visibleTop: WallTopY);
-        Wall(root, "WallR", new Vector2(HalfWidth + WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness),
-             new Vector2(WallThickness, wallH), wallCol, visibleTop: WallTopY);
-        Wall(root, "Floor", new Vector2(0, FloorY - WallThickness * 0.5f),
-             new Vector2(HalfWidth * 2 + WallThickness * 2, WallThickness), wallCol, visibleTop: float.MaxValue);
+
+        // visible frame: one rounded rectangle behind the cream panel (so only the outer corners are round);
+        // the colliders below are plain boxes along its inner edge
+        var frame = new GameObject("Frame");
+        frame.transform.SetParent(root, false);
+        frame.transform.position = new Vector3(0, (WallTopY + FloorY - WallThickness) * 0.5f, 0);
+        var fr = frame.AddComponent<SpriteRenderer>();
+        fr.sprite = SpriteFactory.RoundedRect;
+        fr.drawMode = SpriteDrawMode.Sliced;
+        fr.size = new Vector2(HalfWidth * 2 + WallThickness * 2, WallTopY - FloorY + WallThickness);
+        fr.color = wallCol;
+        fr.sortingOrder = -11;
+
+        // left / right / floor (colliders only)
+        Wall(root, "WallL", new Vector2(-HalfWidth - WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness), new Vector2(WallThickness, wallH));
+        Wall(root, "WallR", new Vector2(HalfWidth + WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness), new Vector2(WallThickness, wallH));
+        Wall(root, "Floor", new Vector2(0, FloorY - WallThickness * 0.5f), new Vector2(HalfWidth * 2 + WallThickness * 2, WallThickness));
 
         // danger line
         _dangerLine = Quad(root, "DangerLine", new Vector2(0, DangerY), new Vector2(HalfWidth * 2, 0.06f),
@@ -122,7 +134,7 @@ public class GameManager : MonoBehaviour
         return sr;
     }
 
-    void Wall(Transform parent, string name, Vector2 pos, Vector2 size, Color color, float visibleTop)
+    void Wall(Transform parent, string name, Vector2 pos, Vector2 size)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
@@ -130,13 +142,6 @@ public class GameManager : MonoBehaviour
         var box = go.AddComponent<BoxCollider2D>();
         box.size = size;
         box.sharedMaterial = _mat;
-
-        // visual clipped to the visible container height
-        float top = Mathf.Min(pos.y + size.y * 0.5f, visibleTop);
-        float bottom = pos.y - size.y * 0.5f;
-        var v = Quad(go.transform, "Visual", Vector2.zero, Vector2.one, color, 5);
-        v.transform.position = new Vector3(pos.x, (top + bottom) * 0.5f, 0);
-        v.transform.localScale = new Vector3(size.x, top - bottom, 1);
     }
 
     // ------------------------------------------------------------------ flow
@@ -171,7 +176,7 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        if (IsGameOver) return;
+        if (IsGameOver || Paused) return;
 
         if (_held == null)
         {

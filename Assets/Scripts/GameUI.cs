@@ -11,6 +11,7 @@ public class GameUI : MonoBehaviour
     Image _nextIcon;
     GameObject _gameOver;
     Button _sndBtn, _hapBtn;
+    GameObject _settings;
     float _pop;
     int _lastScore;
     Text _debug;
@@ -47,33 +48,6 @@ public class GameUI : MonoBehaviour
         nextLbl.color = new Color(0.4f, 0.3f, 0.25f);
         _nextIcon = Img(root, "NextIcon", CatSprites.Icon(0), Color.white, new Vector2(1, 1), new Vector2(-190, -140), new Vector2(100, 100));
 
-        // --- restart (top-center-right) ---
-        var restart = Button(root, "RestartSmall", "RESTART", 34, new Vector2(1, 1), new Vector2(-190, -250), new Vector2(200, 64), new Color(0.55f, 0.36f, 0.24f));
-        restart.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
-
-        // --- sound / haptic toggles (under BEST) ---
-        _sndBtn = Button(root, "SoundToggle", "", 30, new Vector2(0, 1), new Vector2(135, -250), new Vector2(190, 64), Color.gray);
-        _sndBtn.onClick.AddListener(() =>
-        {
-            var a = AudioManager.Instance;
-            a.SetMuted(!a.Muted);
-            a.Click();                       // audible only when turning sound ON
-            RefreshToggles();
-        });
-        _hapBtn = Button(root, "HapticToggle", "", 30, new Vector2(0, 1), new Vector2(345, -250), new Vector2(190, 64), Color.gray);
-        _hapBtn.onClick.AddListener(() =>
-        {
-            Haptics.Enabled = !Haptics.Enabled;
-            AudioManager.Instance.Click();
-            if (Haptics.Enabled) Haptics.Medium();   // let the player feel it
-            RefreshToggles();
-        });
-        RefreshToggles();
-
-        // --- back to title screen ---
-        var menuBtn = Button(root, "MenuSmall", "MENU", 30, new Vector2(0, 1), new Vector2(590, -250), new Vector2(190, 64), new Color(0.55f, 0.36f, 0.24f));
-        menuBtn.onClick.AddListener(GoToMenu);
-
         // --- evolution chain (bottom) ---
         const float slot = 90f;
         float startX = -slot * (FruitDatabase.MaxLevel) * 0.5f;
@@ -97,6 +71,8 @@ public class GameUI : MonoBehaviour
         home.onClick.AddListener(GoToMenu);
         _gameOver.SetActive(false);
 
+        BuildSettings(root);   // created last so the gear button and its panel draw on top of the HUD
+
         // Open the page with ?debug (or #debug) to show FPS / fruit count / last error on screen.
         if (Application.absoluteURL != null && Application.absoluteURL.Contains("debug"))
         {
@@ -110,8 +86,68 @@ public class GameUI : MonoBehaviour
         }
     }
 
+    // ---------------------------------------------------------------- settings (gear button + pause panel)
+
+    /// <summary>One small gear button (top centre, clear of the cats) opens a pause panel with all the options.</summary>
+    void BuildSettings(RectTransform root)
+    {
+        var brown = new Color(0.55f, 0.36f, 0.24f);
+        var center = new Vector2(0.5f, 0.5f);
+
+        var gear = Button(root, "SettingsButton", "", 30, new Vector2(0.5f, 1), new Vector2(0, -85), new Vector2(120, 120), brown);
+        Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, center, Vector2.zero, new Vector2(84, 84));
+        gear.onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(true); });
+
+        _settings = new GameObject("Settings", typeof(RectTransform), typeof(Image));
+        var sp = (RectTransform)_settings.transform;
+        sp.SetParent(root, false);
+        sp.anchorMin = Vector2.zero; sp.anchorMax = Vector2.one; sp.offsetMin = sp.offsetMax = Vector2.zero;
+        _settings.GetComponent<Image>().color = new Color(0, 0, 0, 0.6f);     // dims the game and blocks touches behind it
+
+        RoundImg(sp, "CardBorder", brown, center, Vector2.zero, new Vector2(800, 1060), 64f);
+        RoundImg(sp, "Card", new Color(1f, 0.97f, 0.9f), center, Vector2.zero, new Vector2(770, 1030), 52f);
+        var title = Label(sp, "Title", "SETTINGS", 80, TextAnchor.MiddleCenter, center, new Vector2(0, 400), new Vector2(700, 110));
+        title.color = new Color(0.36f, 0.22f, 0.15f);
+
+        _sndBtn = Button(sp, "SoundToggle", "", 52, center, new Vector2(0, 230), new Vector2(580, 120), Color.gray);
+        _sndBtn.onClick.AddListener(() =>
+        {
+            var a = AudioManager.Instance;
+            a.SetMuted(!a.Muted);
+            a.Click();                       // audible only when turning sound ON
+            RefreshToggles();
+        });
+        _hapBtn = Button(sp, "HapticToggle", "", 52, center, new Vector2(0, 90), new Vector2(580, 120), Color.gray);
+        _hapBtn.onClick.AddListener(() =>
+        {
+            Haptics.Enabled = !Haptics.Enabled;
+            AudioManager.Instance.Click();
+            if (Haptics.Enabled) Haptics.Medium();   // let the player feel it
+            RefreshToggles();
+        });
+        RefreshToggles();
+
+        Button(sp, "Restart", "RESTART", 52, center, new Vector2(0, -50), new Vector2(580, 120), brown)
+            .onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(false); _gm.NewGame(); });
+        Button(sp, "Menu", "MENU", 52, center, new Vector2(0, -190), new Vector2(580, 120), brown)
+            .onClick.AddListener(GoToMenu);
+        Button(sp, "Resume", "RESUME", 60, center, new Vector2(0, -370), new Vector2(580, 140), new Color(0.2f, 0.65f, 0.4f))
+            .onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(false); });
+
+        _settings.SetActive(false);
+    }
+
+    void SetSettingsOpen(bool open)
+    {
+        _settings.SetActive(open);
+        _gm.Paused = open;
+        Time.timeScale = open ? 0f : 1f;
+        if (open) RefreshToggles();
+    }
+
     static void GoToMenu()
     {
+        Time.timeScale = 1f;               // the settings panel pauses the game
         AudioManager.Instance.Click();
         SceneManager.LoadScene(MenuController.MenuScene);
     }
@@ -130,6 +166,9 @@ public class GameUI : MonoBehaviour
 
     void Update()
     {
+        // Esc (also the Android back button) toggles the settings panel
+        if (Input.GetKeyDown(KeyCode.Escape) && _settings != null && !_gameOver.activeSelf) SetSettingsOpen(!_settings.activeSelf);
+
         if (_debug != null)
         {
             float dt = Time.unscaledDeltaTime;
@@ -252,10 +291,19 @@ public class GameUI : MonoBehaviour
         return img;
     }
 
+    /// <summary>Rounded rectangle (9-slice) with the given corner radius in canvas units.</summary>
+    public static Image RoundImg(RectTransform parent, string name, Color color, Vector2 anchor, Vector2 pos, Vector2 dim, float radius)
+    {
+        var img = Img(parent, name, SpriteFactory.RoundedRect, color, anchor, pos, dim);
+        img.type = Image.Type.Sliced;
+        img.pixelsPerUnitMultiplier = 48f / Mathf.Max(1f, radius);    // the sprite's corner is 48 px
+        return img;
+    }
+
     public static Button Button(RectTransform parent, string name, string text, int fontSize, Vector2 anchor,
                          Vector2 pos, Vector2 dim, Color color)
     {
-        var img = Img(parent, name, SpriteFactory.Square, color, anchor, pos, dim);
+        var img = RoundImg(parent, name, color, anchor, pos, dim, Mathf.Min(dim.y * 0.35f, 44f));
         img.raycastTarget = true;
         var btn = img.gameObject.AddComponent<Button>();
         var lbl = Label((RectTransform)img.transform, "Text", text, fontSize, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.zero, dim);

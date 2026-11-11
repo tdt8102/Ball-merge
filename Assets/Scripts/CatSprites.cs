@@ -63,6 +63,24 @@ public static class CatSprites
         return Icons[level];
     }
 
+    static Sprite _gear;
+
+    /// <summary>White gear icon for the settings button (the hole matches the button colour).</summary>
+    public static Sprite Gear()
+    {
+        if (_gear != null) return _gear;
+        var cv = new Canvas(128, 1f, Color.white);
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * Mathf.PI / 4f;
+            cv.Paint(Cap(0, 0, Mathf.Cos(a) * 0.41f, Mathf.Sin(a) * 0.41f, 0.08f), Color.white);   // teeth
+        }
+        cv.Paint(Circle(0, 0, 0.34f), Color.white);
+        cv.Paint(Circle(0, 0, 0.15f), new Color(0.55f, 0.36f, 0.24f));                             // hole = button colour
+        _gear = MakeSprite(cv, 128, 1f);
+        return _gear;
+    }
+
     public static Sprite Eye(int level)
     {
         level = Mathf.Clamp(level, 0, FruitDatabase.MaxLevel);
