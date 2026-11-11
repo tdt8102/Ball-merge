@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>Builds the whole HUD in code (1080x1920 reference, portrait).</summary>
@@ -44,7 +45,7 @@ public class GameUI : MonoBehaviour
         // --- next fruit (top-right) ---
         var nextLbl = Label(root, "NextLabel", "NEXT", 36, TextAnchor.UpperCenter, new Vector2(1, 1), new Vector2(-190, -30), new Vector2(200, 44));
         nextLbl.color = new Color(0.4f, 0.3f, 0.25f);
-        _nextIcon = Img(root, "NextIcon", SpriteFactory.Circle, Color.white, new Vector2(1, 1), new Vector2(-190, -140), new Vector2(100, 100));
+        _nextIcon = Img(root, "NextIcon", CatSprites.Icon(0), Color.white, new Vector2(1, 1), new Vector2(-190, -140), new Vector2(100, 100));
 
         // --- restart (top-center-right) ---
         var restart = Button(root, "RestartSmall", "RESTART", 34, new Vector2(1, 1), new Vector2(-190, -250), new Vector2(200, 64), new Color(0.55f, 0.36f, 0.24f));
@@ -69,13 +70,17 @@ public class GameUI : MonoBehaviour
         });
         RefreshToggles();
 
+        // --- back to title screen ---
+        var menuBtn = Button(root, "MenuSmall", "MENU", 30, new Vector2(0, 1), new Vector2(590, -250), new Vector2(190, 64), new Color(0.55f, 0.36f, 0.24f));
+        menuBtn.onClick.AddListener(GoToMenu);
+
         // --- evolution chain (bottom) ---
         const float slot = 90f;
         float startX = -slot * (FruitDatabase.MaxLevel) * 0.5f;
         for (int i = 0; i <= FruitDatabase.MaxLevel; i++)
         {
-            float size = 28f + i * 5f;
-            Img(root, "Chain" + i, SpriteFactory.Circle, FruitDatabase.Colors[i], new Vector2(0.5f, 0), new Vector2(startX + i * slot, 70f), new Vector2(size, size));
+            float size = (30f + i * 4f) * 1.2f;     // sprite is 1.2x the head diameter (ears/accessories)
+            Img(root, "Chain" + i, CatSprites.Icon(i), Color.white, new Vector2(0.5f, 0), new Vector2(startX + i * slot, 70f), new Vector2(size, size));
         }
 
         // --- game over panel ---
@@ -88,6 +93,8 @@ public class GameUI : MonoBehaviour
         _finalScore = Label(go, "Final", "0", 100, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(900, 140));
         var again = Button(go, "Again", "PLAY AGAIN", 60, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(520, 130), new Color(0.2f, 0.65f, 0.4f));
         again.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
+        var home = Button(go, "Home", "MENU", 50, new Vector2(0.5f, 0.5f), new Vector2(0, -320), new Vector2(520, 110), new Color(0.55f, 0.36f, 0.24f));
+        home.onClick.AddListener(GoToMenu);
         _gameOver.SetActive(false);
 
         // Open the page with ?debug (or #debug) to show FPS / fruit count / last error on screen.
@@ -101,6 +108,12 @@ public class GameUI : MonoBehaviour
                     _lastError = msg.Length > 120 ? msg.Substring(0, 120) : msg;
             };
         }
+    }
+
+    static void GoToMenu()
+    {
+        AudioManager.Instance.Click();
+        SceneManager.LoadScene(MenuController.MenuScene);
     }
 
     void RefreshToggles()
@@ -147,8 +160,8 @@ public class GameUI : MonoBehaviour
         _lastScore = _gm.Score;
         _score.text = _gm.Score.ToString();
         _best.text = "BEST " + _gm.Best;
-        _nextIcon.color = FruitDatabase.Colors[_gm.NextLevel];
-        float d = 40f + FruitDatabase.Radius[_gm.NextLevel] * 110f;
+        _nextIcon.sprite = CatSprites.Icon(_gm.NextLevel);
+        float d = (40f + FruitDatabase.Radius[_gm.NextLevel] * 110f) * 1.2f;
         _nextIcon.rectTransform.sizeDelta = new Vector2(d, d);
     }
 
@@ -201,7 +214,7 @@ public class GameUI : MonoBehaviour
 
     // ---------------------------------------------------------------- helpers
 
-    static Text Label(RectTransform parent, string name, string text, int size, TextAnchor align,
+    public static Text Label(RectTransform parent, string name, string text, int size, TextAnchor align,
                       Vector2 anchor, Vector2 pos, Vector2 dim)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Text));
@@ -223,7 +236,7 @@ public class GameUI : MonoBehaviour
         return t;
     }
 
-    static Image Img(RectTransform parent, string name, Sprite sprite, Color color, Vector2 anchor, Vector2 pos, Vector2 dim)
+    public static Image Img(RectTransform parent, string name, Sprite sprite, Color color, Vector2 anchor, Vector2 pos, Vector2 dim)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Image));
         var rt = (RectTransform)go.transform;
@@ -239,7 +252,7 @@ public class GameUI : MonoBehaviour
         return img;
     }
 
-    static Button Button(RectTransform parent, string name, string text, int fontSize, Vector2 anchor,
+    public static Button Button(RectTransform parent, string name, string text, int fontSize, Vector2 anchor,
                          Vector2 pos, Vector2 dim, Color color)
     {
         var img = Img(parent, name, SpriteFactory.Square, color, anchor, pos, dim);

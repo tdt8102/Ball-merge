@@ -22,6 +22,7 @@ public static class WebGLBuilder
 
     static bool Build()
     {
+        PlayerSettings.productName = "Cat Merge";
         PlayerSettings.WebGL.template = "PROJECT:Portrait";
         // No compression so it can be hosted on GitHub Pages / any static host as-is.
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
@@ -36,7 +37,7 @@ public static class WebGLBuilder
 
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
-            scenes = new[] { "Assets/Scenes/Main.unity" },
+            scenes = new[] { "Assets/Scenes/Menu.unity", "Assets/Scenes/Main.unity" },
             locationPathName = OutDir,
             target = BuildTarget.WebGL,
             options = BuildOptions.None

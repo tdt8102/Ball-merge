@@ -16,7 +16,7 @@ public class AudioManager : MonoBehaviour
     int _next;
     float _lastTock;
     int _sr;
-    AudioClip _drop, _blip, _ding, _tock, _thump, _over, _fanfare, _click, _warn;
+    AudioClip _drop, _meow, _ding, _tock, _thump, _over, _fanfare, _click, _warn;
 
     void Awake()
     {
@@ -54,8 +54,9 @@ public class AudioManager : MonoBehaviour
 
     public void Merge(int level, int combo)
     {
-        float pitch = Mathf.Pow(2f, Penta[Mathf.Clamp(level, 0, Penta.Length - 1)] / 12f);
-        Play(_blip, 0.8f, pitch);
+        // bigger cat = deeper meow
+        float pitch = Mathf.Lerp(1.45f, 0.62f, Mathf.Clamp01(level / (float)FruitDatabase.MaxLevel)) * Random.Range(0.96f, 1.04f);
+        Play(_meow, 0.75f, pitch);
         if (level >= 7) Play(_thump, 0.8f);                       // big fruits get a low thud
         if (combo >= 2)                                           // combo: rising "ding" up the scale
         {
@@ -89,7 +90,7 @@ public class AudioManager : MonoBehaviour
     void BuildClips()
     {
         _drop = Clip("drop", Tone(600, 220, 0.10f, 0.003f, 2.5f, 0.2f));
-        _blip = Clip("blip", Tone(200, 320, 0.24f, 0.004f, 2.2f, 0.35f, 0.12f));
+        _meow = Clip("meow", Meow());
         _ding = Clip("ding", Tone(880, 880, 0.40f, 0.002f, 3f, 0.25f, 0.10f));
         _thump = Clip("thump", Tone(120, 45, 0.30f, 0.003f, 2f, 0.1f));
         _click = Clip("click", Tone(900, 700, 0.04f, 0.001f, 2f, 0.1f));
@@ -136,6 +137,27 @@ public class AudioManager : MonoBehaviour
             float env = Mathf.Min(1f, i / Mathf.Max(1f, attack * _sr)) * Mathf.Pow(1f - t, decayPow);
             float s = (float)(System.Math.Sin(phase) + h2 * System.Math.Sin(2 * phase) + h3 * System.Math.Sin(3 * phase));
             d[i] = s * env * 0.45f;
+        }
+        return d;
+    }
+
+    /// <summary>"Mi-aow": pitch rises quickly then falls, harmonics shift from bright to hollow, light vibrato.</summary>
+    float[] Meow()
+    {
+        const float dur = 0.4f;
+        int n = (int)(dur * _sr);
+        var d = new float[n];
+        double ph = 0;
+        for (int i = 0; i < n; i++)
+        {
+            float t = i / (float)n, sec = i / (float)_sr;
+            float f = 380f + 470f * Mathf.Sin(Mathf.PI * Mathf.Pow(t, 0.6f));
+            f *= 1f + 0.02f * Mathf.Sin(2f * Mathf.PI * 7f * sec);
+            ph += 2.0 * System.Math.PI * f / _sr;
+            float bright = 0.55f - 0.35f * t;                         // "mi" is bright, "ow" is rounder
+            float s = (float)(System.Math.Sin(ph) + 0.6 * System.Math.Sin(2 * ph) + bright * System.Math.Sin(3 * ph) + 0.5 * bright * System.Math.Sin(4 * ph));
+            float env = Mathf.Min(1f, sec / 0.03f) * Mathf.Pow(1f - t, 0.8f);
+            d[i] = s * env * 0.3f;
         }
         return d;
     }

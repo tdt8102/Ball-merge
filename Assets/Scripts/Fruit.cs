@@ -12,7 +12,7 @@ public class Fruit : MonoBehaviour
 
     public bool Worried { get; set; }               // set by GameManager when the stack is too high
 
-    const float EyeSize = 0.16f;
+    const float EyeSize = 0.19f;
     Transform _visual;
     readonly Transform[] _eyes = new Transform[2];
     float _popT = 1f, _blipIn, _lastImpact;
@@ -48,10 +48,9 @@ public class Fruit : MonoBehaviour
         _visual.SetParent(transform, false);
         _visual.localScale = Vector3.one * Radius * 2f;
         var sr = _visual.gameObject.AddComponent<SpriteRenderer>();
-        sr.sprite = SpriteFactory.Circle;
-        sr.color = FruitDatabase.Colors[level];
+        sr.sprite = CatSprites.Get(level);
         sr.sortingOrder = 1;
-        AddEyes(_visual);
+        AddEyes(_visual, level);
 
         // physics
         Body = gameObject.AddComponent<Rigidbody2D>();
@@ -73,18 +72,17 @@ public class Fruit : MonoBehaviour
         else { Dropped = true; _popT = 0f; }
     }
 
-    void AddEyes(Transform parent)
+    void AddEyes(Transform parent, int level)
     {
         int i = 0;
         foreach (float sx in new[] { -0.2f, 0.2f })
         {
             var eye = new GameObject("Eye").transform;
             eye.SetParent(parent, false);
-            eye.localPosition = new Vector3(sx, 0.06f, 0);
+            eye.localPosition = new Vector3(sx, 0.04f, 0);
             eye.localScale = Vector3.one * EyeSize;
             var r = eye.gameObject.AddComponent<SpriteRenderer>();
-            r.sprite = SpriteFactory.Circle;
-            r.color = new Color(0.12f, 0.1f, 0.15f);
+            r.sprite = CatSprites.Eye(level);
             r.sortingOrder = 2;
             _eyes[i++] = eye;
         }

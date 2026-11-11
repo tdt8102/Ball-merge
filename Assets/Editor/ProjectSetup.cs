@@ -6,13 +6,14 @@ using UnityEngine;
 public static class ProjectSetup
 {
     const string ScenePath = "Assets/Scenes/Main.unity";
+    const string MenuPath = "Assets/Scenes/Menu.unity";
 
     [MenuItem("Tools/Suika/Setup Project and Create Scene")]
     public static void Run()
     {
         // --- portrait player settings ---
         PlayerSettings.companyName = "Proto";
-        PlayerSettings.productName = "Suika Merge Proto";
+        PlayerSettings.productName = "Cat Merge";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
         PlayerSettings.allowedAutorotateToLandscapeLeft = false;
         PlayerSettings.allowedAutorotateToLandscapeRight = false;
@@ -25,7 +26,17 @@ public static class ProjectSetup
         PlayerSettings.defaultScreenHeight = 960;
         PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
 
-        // --- scene ---
+        // --- scenes: Menu (title + loading) -> Main (gameplay) ---
+        System.IO.Directory.CreateDirectory("Assets/Scenes");
+        CreateScene(MenuPath, "Menu", typeof(MenuController));
+        CreateScene(ScenePath, "GameManager", typeof(GameManager));
+        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(MenuPath, true), new EditorBuildSettingsScene(ScenePath, true) };
+        AssetDatabase.SaveAssets();
+        Debug.Log("[Suika] Setup done. Scenes: " + MenuPath + ", " + ScenePath);
+    }
+
+    static void CreateScene(string path, string rootName, System.Type component)
+    {
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
@@ -36,12 +47,7 @@ public static class ProjectSetup
         cam.backgroundColor = new Color(0.98f, 0.93f, 0.84f);
         camGo.transform.position = new Vector3(0, 0, -10);
 
-        new GameObject("GameManager").AddComponent<GameManager>();
-
-        System.IO.Directory.CreateDirectory("Assets/Scenes");
-        EditorSceneManager.SaveScene(scene, ScenePath);
-        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
-        AssetDatabase.SaveAssets();
-        Debug.Log("[Suika] Setup done. Scene: " + ScenePath);
+        new GameObject(rootName).AddComponent(component);
+        EditorSceneManager.SaveScene(scene, path);
     }
 }

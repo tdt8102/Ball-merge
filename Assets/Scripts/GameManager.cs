@@ -241,7 +241,7 @@ public class GameManager : MonoBehaviour
         _combo = Time.time - _lastMergeTime <= ComboWindow ? _combo + 1 : 1;
         _lastMergeTime = Time.time;
         if (_combo >= 2) _ui.ShowCombo(pos, _combo);
-        Color col = FruitDatabase.Colors[level];
+        Color col = FruitDatabase.BurstColor(level);
 
         _fruits.Remove(a);
         _fruits.Remove(b);
@@ -260,7 +260,7 @@ public class GameManager : MonoBehaviour
         {
             AddScore(100);          // two biggest fruits: vanish for a bonus
             AudioManager.Instance.Fanfare();
-            foreach (var c in FruitDatabase.Colors) Fx.Instance.Burst(pos, c, 5, 6f, 0.2f);
+            foreach (var c in FruitDatabase.ConfettiColors) Fx.Instance.Burst(pos, c, 8, 6f, 0.2f);
             Fx.Instance.Shake(0.25f, 0.4f);
             return;
         }
