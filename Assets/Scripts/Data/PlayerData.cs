@@ -68,9 +68,32 @@ public static class PlayerData
 
     public static bool HasRun => Run != null;
 
+    /// <summary>True between a data reset and the next menu load: nothing may be written, so the reset cannot be undone by an autosave.</summary>
+    public static bool Blocked;
+
+    /// <summary>Forget everything: coins, best score, collection, equipped skins, language and the game in progress.</summary>
+    public static void ResetAll()
+    {
+        Blocked = true;
+        PlayerPrefs.DeleteKey(Key);
+        PlayerPrefs.DeleteKey(RunKey);
+        PlayerPrefs.DeleteKey("best");                    // score key of the first versions
+        PlayerPrefs.Save();
+        _d = null;
+        _dirty = false;
+        _run = null;
+        _runLoaded = true;
+        _runDirty = false;
+        _lastRunJson = "";
+        ResumeRequested = false;
+        Loc.ResetLanguage();
+        Cosmetics.Reload();
+    }
+
     /// <summary>Remember the game in progress (null or an empty board clears it).</summary>
     public static void SaveRun(RunSnapshot snapshot)
     {
+        if (Blocked) return;
         _run = snapshot != null && snapshot.cats.Count > 0 ? snapshot : null;
         _runLoaded = true;
         _runDirty = true;
@@ -181,6 +204,7 @@ public static class PlayerData
     /// <summary>Write pending changes to disk (no-op when nothing changed).</summary>
     public static void Flush()
     {
+        if (Blocked) return;
         bool write = false;
         if (_dirty && _d != null)
         {

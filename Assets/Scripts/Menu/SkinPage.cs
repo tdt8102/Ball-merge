@@ -240,7 +240,7 @@ public class SkinPage : MonoBehaviour
     /// <summary>Edit one cat number: the same cat in every theme, tap one to wear it. Mix themes freely, e.g. cat 1 Pixel, cat 2 Candy.</summary>
     void RefreshSlotView()
     {
-        _themeName.text = "#" + (_slot + 1) + "  " + Loc.CatName(_slot);
+        _themeName.text = "#" + (_slot + 1) + "  " + Cosmetics.WornName(_slot);
         _themeSub.text = Loc.T("cat_slot").Replace("{0}", (_slot + 1).ToString());
         _themeSub.color = Soft;
         _equipSetLabel.text = Loc.T("by_theme");

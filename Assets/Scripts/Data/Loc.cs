@@ -77,6 +77,8 @@ public static class Loc
         new[] { "equip_set",  "WEAR THIS WHOLE THEME",              "MẶC CẢ BỘ NÀY" },
         new[] { "collected",  "Collected",                           "Đã sưu tầm" },
         new[] { "cheat",      "CHEAT",                               "GIAN LẬN" },
+        new[] { "cheat_reset","RESET PLAYER DATA",                   "XOÁ DỮ LIỆU CHƠI" },
+        new[] { "cheat_sure", "TAP AGAIN TO CONFIRM",                 "BẤM LẠI ĐỂ XÁC NHẬN" },
         new[] { "enter_pass", "Enter the password",                  "Nhập mật khẩu" },
         new[] { "wrong_pass", "Wrong password",                      "Sai mật khẩu" },
         new[] { "coins_added","Coins added",                         "Đã thêm xu" },
@@ -109,6 +111,9 @@ public static class Loc
             return _lang;
         }
     }
+
+    /// <summary>Forget the chosen language (after a data reset): the device language is used again.</summary>
+    public static void ResetLanguage() => _lang = null;
 
     public static void SetLanguage(string lang)
     {

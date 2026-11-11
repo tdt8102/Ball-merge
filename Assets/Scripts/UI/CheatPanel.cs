@@ -20,6 +20,9 @@ public class CheatPanel : MonoBehaviour
     public static event Action CoinsChanged;
 
     GameObject _passGroup, _menuGroup;
+    Button _resetBtn;
+    Text _resetLabel;
+    float _confirmT = -1f;
     Text _display, _prompt, _coins, _info;
     string _input = "";
     float _wrongT = -1f;
@@ -81,18 +84,21 @@ public class CheatPanel : MonoBehaviour
         // ---- cheat menu
         _menuGroup = Group(rt, "Menu");
         var mg = (RectTransform)_menuGroup.transform;
-        _coins = GameUI.Label(mg, "Coins", "", 56, TextAnchor.MiddleCenter, C, new Vector2(0, 280), new Vector2(580, 80));
+        _coins = GameUI.Label(mg, "Coins", "", 56, TextAnchor.MiddleCenter, C, new Vector2(0, 310), new Vector2(580, 80));
         _coins.color = Ink;
-        _info = GameUI.Label(mg, "Info", "", 34, TextAnchor.MiddleCenter, C, new Vector2(0, 205), new Vector2(580, 50));
+        _info = GameUI.Label(mg, "Info", "", 34, TextAnchor.MiddleCenter, C, new Vector2(0, 240), new Vector2(580, 50));
         _info.color = Green;
         int[] amounts = { 1000, 10000, 100000 };
         for (int i = 0; i < amounts.Length; i++)
         {
             int amount = amounts[i];
-            var b = GameUI.Button(mg, "Add" + amount, "+" + amount.ToString("N0"), 52, C, new Vector2(0, 90 - i * 125f), new Vector2(480, 100), Green);
+            var b = GameUI.Button(mg, "Add" + amount, "+" + amount.ToString("N0"), 52, C, new Vector2(0, 120 - i * 110f), new Vector2(480, 96), Green);
             b.onClick.AddListener(() => AddCoins(amount));
         }
-        var done = GameUI.Button(mg, "Done", "OK", 50, C, new Vector2(0, -320), new Vector2(380, 100), Brown);
+        _resetBtn = GameUI.Button(mg, "Reset", "", 34, C, new Vector2(0, -235), new Vector2(540, 96), Red);
+        _resetLabel = _resetBtn.GetComponentInChildren<Text>();
+        _resetBtn.onClick.AddListener(OnReset);
+        var done = GameUI.Button(mg, "Done", "OK", 50, C, new Vector2(0, -355), new Vector2(380, 100), Brown);
         done.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
     }
 
@@ -116,6 +122,8 @@ public class CheatPanel : MonoBehaviour
 
     void ShowMenu()
     {
+        _confirmT = -1f;
+        _resetLabel.text = Loc.T("cheat_reset");
         _passGroup.SetActive(false);
         _menuGroup.SetActive(true);
         _info.text = "";
@@ -150,6 +158,24 @@ public class CheatPanel : MonoBehaviour
         _wrongT = 0f;
     }
 
+    /// <summary>First tap asks to confirm; a second tap within a few seconds erases all player data and returns to the menu.</summary>
+    void OnReset()
+    {
+        AudioManager.Instance.Click();
+        if (_confirmT < 0f)
+        {
+            _confirmT = 0f;
+            _resetLabel.text = Loc.T("cheat_sure");
+            Haptics.Medium();
+            return;
+        }
+        PlayerData.ResetAll();
+        Haptics.Heavy();
+        Time.timeScale = 1f;                                        // the in-game settings popup pauses the game
+        CoinsChanged?.Invoke();
+        UnityEngine.SceneManagement.SceneManager.LoadScene(MenuController.MenuScene);   // reload the menu so every screen starts from the fresh profile
+    }
+
     void AddCoins(int amount)
     {
         PlayerData.AddCoins(amount);
@@ -168,6 +194,12 @@ public class CheatPanel : MonoBehaviour
             foreach (char ch in Input.inputString)
                 if (ch >= '0' && ch <= '9') OnKey(ch.ToString());
                 else if (ch == '\b') OnKey("<");
+
+        if (_confirmT >= 0f)
+        {
+            _confirmT += Time.unscaledDeltaTime;
+            if (_confirmT > 3f) { _confirmT = -1f; _resetLabel.text = Loc.T("cheat_reset"); }
+        }
 
         if (_wrongT >= 0f)
         {

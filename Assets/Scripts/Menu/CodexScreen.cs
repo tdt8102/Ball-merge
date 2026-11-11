@@ -166,7 +166,7 @@ public class CodexScreen
             ShowCat(_icons[i], i, theme.Index, seen ? Color.white : new Color(0.07f, 0.05f, 0.07f, 1f));     // black silhouette when not found
             _cards[i].color = seen ? Cream : new Color(0.93f, 0.88f, 0.8f);
             _borders[i].color = seen && !classic ? Cosmetics.RarityColor(item.Rarity) : Brown;
-            _names[i].text = seen ? Loc.CatName(i) : "???";
+            _names[i].text = seen ? item.Name : "???";
 
             if (classic)
             {

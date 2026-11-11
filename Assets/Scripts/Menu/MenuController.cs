@@ -66,6 +66,7 @@ public class MenuController : MonoBehaviour
 
     void Awake()
     {
+        PlayerData.Blocked = false;                 // saving is allowed again after a data reset
         SetupCamera();
         if (AudioManager.Instance == null) new GameObject("Audio").AddComponent<AudioManager>();
         BuildUI();

@@ -254,7 +254,7 @@ public class GameUI : MonoBehaviour
         {
             var q = _toastQueue.Dequeue();
             _toastIcon.sprite = CatSprites.Icon(q.x);
-            _toastName.text = Loc.CatName(q.x);
+            _toastName.text = Cosmetics.WornName(q.x);
             _toastReward.text = "+" + q.y;
             _toast.gameObject.SetActive(true);
             _toastT = 0f;

@@ -30,6 +30,7 @@ public sealed class CatStyle
     public int Index;
     public bool Default;
     public string Name => Loc.Language == "vi" ? Vi : En;
+    public string[] NamesEn, NamesVi;       // the 11 cats of this theme have their own names (null = the classic names)
 
     public Func<Color, int, Color> Coat;    // (normal colour, level) -> this theme's colour; used for the coat and its patches (null = unchanged)
     public Func<int, Color> Eye;            // level -> eye colour (null = the normal eyes)
@@ -51,7 +52,8 @@ public sealed class CatItem : Item
 {
     public CatStyle Theme;
     public int Level;
-    public override string Name => Loc.CatName(Level);
+    public override string Name =>
+        Theme.NamesEn == null ? Loc.CatName(Level) : (Loc.Language == "vi" ? Theme.NamesVi : Theme.NamesEn)[Level];
     public override string Subtitle => Theme.Name;
 }
 
@@ -111,32 +113,34 @@ public static class Cosmetics
         new CatStyle { Id = "cat_classic", En = "Classic", Vi = "Cổ điển", Default = true },
 
         // flat, vivid colours, thick black outline, plain black dot eyes
-        new CatStyle { Id = "cat_doodle", En = "Doodle", Vi = "Nét vẽ", Coat = Vivid, LineColor = new Color(0.1f, 0.08f, 0.1f), Outline = 0.028f,
+        new CatStyle { Id = "cat_doodle", NamesEn = Names("Scribble,Sketchy,Inky,Crayon,Doodlebug,Squiggle,Pencil,Blot,Marker,Comic,Masterpiece"), NamesVi = Names("Nguệch,Phác Thảo,Mực Tàu,Bút Sáp,Vẽ Bậy,Nét Cong,Bút Chì,Vệt Mực,Bút Lông,Truyện Tranh,Kiệt Tác"), En = "Doodle", Vi = "Nét vẽ", Coat = Vivid, LineColor = new Color(0.1f, 0.08f, 0.1f), Outline = 0.028f,
                        EyeKind = EyeShape.Dot, EyeScale = 1.1f, TinyFace = true, Whiskers = false, Cheek = 0f },
 
         // soft pastel colours, round bear ears, happy closed eyes
-        new CatStyle { Id = "cat_kawaii", En = "Kawaii", Vi = "Dễ thương", Coat = (c, l) => Color.Lerp(c, Hex("FFE9F0"), 0.55f), LineMix = 0.3f,
+        new CatStyle { Id = "cat_kawaii", NamesEn = Names("Mochi,Boba,Pudding,Peach,Daifuku,Sakura,Taiyaki,Marshmallow,Cupcake,Princess,Angel"), NamesVi = Names("Mochi,Trân Châu,Bánh Flan,Đào,Daifuku,Anh Đào,Bánh Cá,Kẹo Xốp,Bánh Bông,Công Chúa,Thiên Thần"), En = "Kawaii", Vi = "Dễ thương", Coat = (c, l) => Color.Lerp(c, Hex("FFE9F0"), 0.55f), LineMix = 0.3f,
                        Ears = EarShape.Round, EyeKind = EyeShape.Happy, EyeScale = 1.15f, EyeY = 0.02f, TinyFace = true, Whiskers = false, Cheek = 0.75f },
 
         // huge sparkling eyes set low on the face
-        new CatStyle { Id = "cat_chibi", En = "Chibi", Vi = "Chibi", EyeKind = EyeShape.Sparkle, EyeScale = 1.55f, EyeX = 0.21f, EyeY = -0.03f,
+        new CatStyle { Id = "cat_chibi", NamesEn = Names("Pip,Bean,Nugget,Peanut,Button,Sprout,Pebble,Muffin,Biscuit,Mini King,Mini Queen"), NamesVi = Names("Bé Tí,Hạt Đậu,Viên Gà,Đậu Phộng,Cúc Áo,Mầm Nhỏ,Sỏi Nhỏ,Bánh Nướng,Bánh Quy,Vua Nhí,Nữ Hoàng Nhí"), En = "Chibi", Vi = "Chibi", EyeKind = EyeShape.Sparkle, EyeScale = 1.55f, EyeX = 0.21f, EyeY = -0.03f,
                        TinyFace = true, Whiskers = false, Cheek = 0.85f },
 
         // retro: a 40x40 grid of big square pixels and few colours
-        new CatStyle { Id = "cat_pixel", En = "Pixel", Vi = "Pixel", Coat = Retro, Pixels = 40, LineMix = 0.75f },
+        new CatStyle { Id = "cat_pixel", NamesEn = Names("Bit,Byte,Sprite,Glitch,Joypad,Arcade,Level Up,Boss,Hi-Score,8-Bit King,Final Boss"), NamesVi = Names("Bit,Byte,Sprite,Lỗi Hình,Tay Cầm,Máy Game,Lên Cấp,Trùm,Điểm Cao,Vua 8-Bit,Trùm Cuối"), En = "Pixel", Vi = "Pixel", Coat = Retro, Pixels = 40, LineMix = 0.75f },
 
         // night cat: dark blue coat, neon eyes, little fangs and stars
-        new CatStyle { Id = "cat_midnight", En = "Midnight", Vi = "Nửa đêm", Coat = Midnight, Eye = l => Hex(NeonEyes[l % 3]), LineMix = 0.75f,
+        new CatStyle { Id = "cat_midnight", NamesEn = Names("Moonbeam,Dusk,Nebula,Comet,Eclipse,Twilight,Raven,Nocturne,Vesper,Lunar Duke,Night Queen"), NamesVi = Names("Ánh Trăng,Hoàng Hôn,Tinh Vân,Sao Chổi,Nhật Thực,Chạng Vạng,Quạ Đêm,Dạ Khúc,Sao Hôm,Nguyệt Công,Dạ Hoàng"), En = "Midnight", Vi = "Nửa đêm", Coat = Midnight, Eye = l => Hex(NeonEyes[l % 3]), LineMix = 0.75f,
                        Fangs = true, Sparkle = true, Cheek = 0.2f },
 
         // bold candy colours with white polka dots
-        new CatStyle { Id = "cat_candy", En = "Candy", Vi = "Kẹo ngọt", Coat = (c, l) => Hex(CandyCoats[l]), Eye = l => Hex("5B3FD0"), Pat = CatSprites.Pattern.Dots,
+        new CatStyle { Id = "cat_candy", NamesEn = Names("Gumdrop,Lollipop,Sprinkle,Caramel,Bonbon,Toffee,Jelly,Cotton Candy,Licorice,Sugar Prince,Candy Queen"), NamesVi = Names("Kẹo Dẻo,Kẹo Mút,Cốm Rắc,Caramel,Bonbon,Kẹo Bơ,Thạch,Kẹo Bông,Cam Thảo,Hoàng Tử Kẹo,Nữ Hoàng Kẹo"), En = "Candy", Vi = "Kẹo ngọt", Coat = (c, l) => Hex(CandyCoats[l]), Eye = l => Hex("5B3FD0"), Pat = CatSprites.Pattern.Dots,
                        Sparkle = true, TinyFace = true, Whiskers = false, Cheek = 0.6f, LineMix = 0.55f },
 
         // metallic gold with a shine, ruby eyes and a gem on the forehead
-        new CatStyle { Id = "cat_gold", En = "Golden", Vi = "Hoàng kim", Coat = (c, l) => Color.Lerp(Hex("FFF0A8"), Hex("E0A020"), l / 10f), Eye = l => Hex("E8334A"),
+        new CatStyle { Id = "cat_gold", NamesEn = Names("Glimmer,Bullion,Ducat,Amber,Sunbeam,Topaz,Auric,Midas,Treasure,Golden Duke,Pharaoh"), NamesVi = Names("Lấp Lánh,Vàng Thỏi,Đồng Ducat,Hổ Phách,Tia Nắng,Hoàng Ngọc,Kim Quang,Midas,Kho Báu,Công Tước Vàng,Pharaoh"), En = "Golden", Vi = "Hoàng kim", Coat = (c, l) => Color.Lerp(Hex("FFF0A8"), Hex("E0A020"), l / 10f), Eye = l => Hex("E8334A"),
                        Gloss = true, Sparkle = true, Gem = true, LineMix = 0.7f },
     };
+
+    static string[] Names(string csv) => csv.Split(',');
 
     static Color Vivid(Color c, int level)
     {
@@ -239,6 +243,9 @@ public static class Cosmetics
     public static CatItem CatItemOf(CatStyle theme, int level) => CatItems[theme.Index * Levels + Mathf.Clamp(level, 0, Levels - 1)];
     public static string DefaultTheme => Cats[0].Id;
 
+    /// <summary>Name of the cat of this level as it looks right now (the name belongs to the theme it wears).</summary>
+    public static string WornName(int level) => CatItemOf(CatOf(level), level).Name;
+
     // ------------------------------------------------------------------ rarity and labels
 
     public static Color RarityColor(Rarity r) =>
@@ -272,6 +279,9 @@ public static class Cosmetics
         var fr = Find(PlayerData.Frame) as FrameStyle;
         _frame = fr != null && PlayerData.IsOwned(fr.Id) ? fr : Frames[0];
     }
+
+    /// <summary>Read what is equipped again (after a data reset).</summary>
+    public static void Reload() => _loaded = false;
 
     /// <summary>Index into Cats of the theme worn by this cat level.</summary>
     public static int CatIndex(int level)
