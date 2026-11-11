@@ -10,8 +10,7 @@ public class GameUI : MonoBehaviour
     Text _score, _best, _finalScore;
     Image _nextIcon;
     GameObject _gameOver;
-    Button _sndBtn, _hapBtn;
-    GameObject _settings;
+    SettingsPopup _popup;
     float _pop;
     int _lastScore;
     Text _debug;
@@ -86,88 +85,32 @@ public class GameUI : MonoBehaviour
         }
     }
 
-    // ---------------------------------------------------------------- settings (gear button + pause panel)
+    // ---------------------------------------------------------------- settings (gear button + popup)
 
-    /// <summary>One small gear button (top centre, clear of the cats) opens a pause panel with all the options.</summary>
+    /// <summary>One small gear button (top centre, clear of the cats) opens the shared settings popup; it pauses the game.</summary>
     void BuildSettings(RectTransform root)
     {
-        var brown = new Color(0.55f, 0.36f, 0.24f);
-        var center = new Vector2(0.5f, 0.5f);
+        var gear = Button(root, "SettingsButton", "", 30, new Vector2(0.5f, 1), new Vector2(0, -85), new Vector2(120, 120), new Color(0.55f, 0.36f, 0.24f));
+        Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(84, 84));
+        gear.onClick.AddListener(() => { AudioManager.Instance.Click(); _popup.Open(); });
 
-        var gear = Button(root, "SettingsButton", "", 30, new Vector2(0.5f, 1), new Vector2(0, -85), new Vector2(120, 120), brown);
-        Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, center, Vector2.zero, new Vector2(84, 84));
-        gear.onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(true); });
-
-        _settings = new GameObject("Settings", typeof(RectTransform), typeof(Image));
-        var sp = (RectTransform)_settings.transform;
-        sp.SetParent(root, false);
-        sp.anchorMin = Vector2.zero; sp.anchorMax = Vector2.one; sp.offsetMin = sp.offsetMax = Vector2.zero;
-        _settings.GetComponent<Image>().color = new Color(0, 0, 0, 0.6f);     // dims the game and blocks touches behind it
-
-        RoundImg(sp, "CardBorder", brown, center, Vector2.zero, new Vector2(800, 1060), 64f);
-        RoundImg(sp, "Card", new Color(1f, 0.97f, 0.9f), center, Vector2.zero, new Vector2(770, 1030), 52f);
-        var title = Label(sp, "Title", "SETTINGS", 80, TextAnchor.MiddleCenter, center, new Vector2(0, 400), new Vector2(700, 110));
-        title.color = new Color(0.36f, 0.22f, 0.15f);
-
-        _sndBtn = Button(sp, "SoundToggle", "", 52, center, new Vector2(0, 230), new Vector2(580, 120), Color.gray);
-        _sndBtn.onClick.AddListener(() =>
-        {
-            var a = AudioManager.Instance;
-            a.SetMuted(!a.Muted);
-            a.Click();                       // audible only when turning sound ON
-            RefreshToggles();
-        });
-        _hapBtn = Button(sp, "HapticToggle", "", 52, center, new Vector2(0, 90), new Vector2(580, 120), Color.gray);
-        _hapBtn.onClick.AddListener(() =>
-        {
-            Haptics.Enabled = !Haptics.Enabled;
-            AudioManager.Instance.Click();
-            if (Haptics.Enabled) Haptics.Medium();   // let the player feel it
-            RefreshToggles();
-        });
-        RefreshToggles();
-
-        Button(sp, "Restart", "RESTART", 52, center, new Vector2(0, -50), new Vector2(580, 120), brown)
-            .onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(false); _gm.NewGame(); });
-        Button(sp, "Menu", "MENU", 52, center, new Vector2(0, -190), new Vector2(580, 120), brown)
-            .onClick.AddListener(GoToMenu);
-        Button(sp, "Resume", "RESUME", 60, center, new Vector2(0, -370), new Vector2(580, 140), new Color(0.2f, 0.65f, 0.4f))
-            .onClick.AddListener(() => { AudioManager.Instance.Click(); SetSettingsOpen(false); });
-
-        _settings.SetActive(false);
-    }
-
-    void SetSettingsOpen(bool open)
-    {
-        _settings.SetActive(open);
-        _gm.Paused = open;
-        Time.timeScale = open ? 0f : 1f;
-        if (open) RefreshToggles();
+        _popup = SettingsPopup.Create(root, true,
+            open => { _gm.Paused = open; Time.timeScale = open ? 0f : 1f; },
+            onRestart: () => _gm.NewGame(),
+            onMenu: GoToMenu);
     }
 
     static void GoToMenu()
     {
-        Time.timeScale = 1f;               // the settings panel pauses the game
+        Time.timeScale = 1f;               // the settings popup pauses the game
         AudioManager.Instance.Click();
         SceneManager.LoadScene(MenuController.MenuScene);
-    }
-
-    void RefreshToggles()
-    {
-        SetToggle(_sndBtn, "SOUND", !AudioManager.Instance.Muted);
-        SetToggle(_hapBtn, "HAPTIC", Haptics.Enabled);
-    }
-
-    static void SetToggle(Button b, string label, bool on)
-    {
-        b.GetComponentInChildren<Text>().text = label + (on ? " ON" : " OFF");
-        ((Image)b.targetGraphic).color = on ? new Color(0.2f, 0.65f, 0.4f) : new Color(0.6f, 0.55f, 0.5f);
     }
 
     void Update()
     {
         // Esc (also the Android back button) toggles the settings panel
-        if (Input.GetKeyDown(KeyCode.Escape) && _settings != null && !_gameOver.activeSelf) SetSettingsOpen(!_settings.activeSelf);
+        if (Input.GetKeyDown(KeyCode.Escape) && _popup != null && !_gameOver.activeSelf) _popup.Toggle();
 
         if (_debug != null)
         {
@@ -260,7 +203,10 @@ public class GameUI : MonoBehaviour
         var rt = (RectTransform)go.transform;
         rt.SetParent(parent, false);
         rt.anchorMin = rt.anchorMax = anchor;
-        rt.pivot = new Vector2(align == TextAnchor.UpperLeft ? 0 : 0.5f, align == TextAnchor.MiddleCenter ? 0.5f : 1);
+        bool left = align == TextAnchor.UpperLeft || align == TextAnchor.MiddleLeft || align == TextAnchor.LowerLeft;
+        bool upper = align == TextAnchor.UpperLeft || align == TextAnchor.UpperCenter || align == TextAnchor.UpperRight;
+        bool lower = align == TextAnchor.LowerLeft || align == TextAnchor.LowerCenter || align == TextAnchor.LowerRight;
+        rt.pivot = new Vector2(left ? 0f : 0.5f, upper ? 1f : (lower ? 0f : 0.5f));
         rt.anchoredPosition = pos;
         rt.sizeDelta = dim;
         var t = go.GetComponent<Text>();

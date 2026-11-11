@@ -6,7 +6,7 @@ using UnityEngine;
 /// round head (the physics body is a circle of diameter 1), pointy ears, nose, whiskers,
 /// coat pattern and an accessory for the high levels. Eyes are separate sprites so they can blink.
 /// </summary>
-public static class CatSprites
+public static partial class CatSprites
 {
     const int Size = 256;
     const float Span = 1.2f;      // world units covered by the texture; the round head has diameter 1
@@ -319,6 +319,21 @@ public static class CatSprites
                 if (hasClip) { a *= Mathf.Clamp01(0.5f - clip.D(u, v) * k); if (a <= 0f) continue; }
                 a *= c.a;
                 Blend(ref Px[y * N + x], c, a);
+            }
+        }
+
+        /// <summary>Cut the shape out of what is already painted (makes it transparent).</summary>
+        public void Erase(Shape s)
+        {
+            float k = N / Span, half = Span * 0.5f;
+            int x0 = Mathf.Max(0, (int)((s.X0 + half) * k) - 1), x1 = Mathf.Min(N - 1, (int)((s.X1 + half) * k) + 1);
+            int y0 = Mathf.Max(0, (int)((s.Y0 + half) * k) - 1), y1 = Mathf.Min(N - 1, (int)((s.Y1 + half) * k) + 1);
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                float u = (x + 0.5f) / k - half, v = (y + 0.5f) / k - half;
+                float a = Mathf.Clamp01(0.5f - s.D(u, v) * k);
+                if (a > 0f) Px[y * N + x].a *= 1f - a;
             }
         }
 
