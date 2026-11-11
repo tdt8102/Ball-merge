@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// All sounds are synthesized at startup (no audio files). Merge pitch climbs a pentatonic scale
-/// with the fruit level, so chains of merges sound like a little melody.
+/// with the cat level, so chains of merges sound like a little melody.
 /// </summary>
 public class AudioManager : MonoBehaviour
 {
@@ -51,13 +51,14 @@ public class AudioManager : MonoBehaviour
     public void Warn() => Play(_warn, 0.35f);
     public void GameOver() => Play(_over, 0.8f);
     public void Fanfare() => Play(_fanfare, 0.9f);
+    public void Discover() { Play(_ding, 0.6f, 1f); Play(_ding, 0.5f, 1.5f); }
 
     public void Merge(int level, int combo)
     {
         // bigger cat = deeper meow
-        float pitch = Mathf.Lerp(1.45f, 0.62f, Mathf.Clamp01(level / (float)FruitDatabase.MaxLevel)) * Random.Range(0.96f, 1.04f);
+        float pitch = Mathf.Lerp(1.45f, 0.62f, Mathf.Clamp01(level / (float)CatDatabase.MaxLevel)) * Random.Range(0.96f, 1.04f);
         Play(_meow, 0.75f, pitch);
-        if (level >= 7) Play(_thump, 0.8f);                       // big fruits get a low thud
+        if (level >= 7) Play(_thump, 0.8f);                       // big cats get a low thud
         if (combo >= 2)                                           // combo: rising "ding" up the scale
         {
             float cp = Mathf.Pow(2f, Penta[Mathf.Clamp(combo - 2, 0, Penta.Length - 1)] / 12f);
@@ -70,7 +71,7 @@ public class AudioManager : MonoBehaviour
         if (Time.unscaledTime - _lastTock < 0.04f) return;
         _lastTock = Time.unscaledTime;
         float vol = Mathf.Clamp01((speed - 2f) / 8f) * 0.5f + 0.1f;
-        float pitch = Mathf.Clamp(1.4f / (0.6f + radius), 0.5f, 2f);   // bigger fruit = lower knock
+        float pitch = Mathf.Clamp(1.4f / (0.6f + radius), 0.5f, 2f);   // bigger cat = lower knock
         Play(_tock, vol, pitch);
     }
 
@@ -108,7 +109,7 @@ public class AudioManager : MonoBehaviour
             Mix(over, Tone(notes[i], notes[i] * 0.98f, i == 3 ? 0.6f : 0.25f, 0.005f, 1.6f, 0.3f, 0.1f), (int)(i * 0.22f * _sr), 0.8f);
         _over = Clip("over", over);
 
-        // fanfare for two max fruits: rising arpeggio
+        // fanfare for two max cats: rising arpeggio
         var fan = new float[(int)(1.2f * _sr)];
         float[] arp = { 523f, 659f, 784f, 1047f, 1319f };
         for (int i = 0; i < arp.Length; i++)

@@ -19,7 +19,7 @@ public class MenuController : MonoBehaviour
     const int HomeTab = 1;
     const float TabBarHeight = 190f;
 
-    static readonly string[] TabNames = { "GACHA", "HOME", "SKIN", "SHOP" };
+    static readonly string[] TabKeys = { "tab_gacha", "tab_home", "tab_skin", "tab_shop" };
     static readonly Color Brown = new Color(0.55f, 0.36f, 0.24f);
     static readonly Color Ink = new Color(0.36f, 0.22f, 0.15f);
     static readonly Color Soft = new Color(0.5f, 0.36f, 0.28f);
@@ -34,6 +34,7 @@ public class MenuController : MonoBehaviour
     RectTransform[] _bobbers, _soonCats;
     RectTransform _loadingCat;
     SettingsPopup _popup;
+    CodexScreen _codex;
     bool _loading;
 
     // tab bar
@@ -84,6 +85,7 @@ public class MenuController : MonoBehaviour
         _soonCats = new RectTransform[4];
         for (int i = 0; i < 4; i++) if (i != HomeTab) BuildSoonPage(i);
         BuildTabBar();
+        _codex = CodexScreen.Create(_root);          // above the tab bar, below the popup and loading screen
         _popup = SettingsPopup.Create(_root, false);
         BuildLoadingPanel();
         _loadingPanel.SetActive(false);
@@ -100,7 +102,9 @@ public class MenuController : MonoBehaviour
         var title = GameUI.Label(p, "Title", "CatCatCat", 150, TextAnchor.MiddleCenter, Center, new Vector2(0, 560), new Vector2(1000, 200));
         title.color = Ink;
         Outline(title, Color.white, 4);
-        GameUI.Label(p, "Sub", "Drop and merge the cats!", 46, TextAnchor.MiddleCenter, Center, new Vector2(0, 430), new Vector2(1000, 70)).color = Soft;
+        var sub = GameUI.Label(p, "Sub", "", 46, TextAnchor.MiddleCenter, Center, new Vector2(0, 430), new Vector2(1000, 70));
+        sub.color = Soft;
+        Loc.Bind(sub, () => Loc.T("subtitle"));
 
         // a row of cats that bob up and down (levels sampled across the range)
         int[] levels = { 0, 3, 10, 4, 8 };
@@ -115,11 +119,21 @@ public class MenuController : MonoBehaviour
 
         var play = GameUI.Button(p, "Play", "PLAY", 90, Center, new Vector2(0, -270), new Vector2(560, 170), new Color(0.2f, 0.65f, 0.4f));
         play.onClick.AddListener(OnPlay);
+        Loc.Bind(play, () => Loc.T("play"));
 
-        int best = PlayerPrefs.GetInt("best", 0);
-        GameUI.Label(p, "Best", "BEST  " + best, 50, TextAnchor.MiddleCenter, Center, new Vector2(0, -460), new Vector2(800, 80)).color = Soft;
+        var bestLbl = GameUI.Label(p, "Best", "", 50, TextAnchor.MiddleCenter, Center, new Vector2(0, -460), new Vector2(800, 80));
 
-        // the only settings entry: a gear icon in the top-right corner
+        bestLbl.color = Soft;
+
+        Loc.Bind(bestLbl, () => Loc.T("best") + "  " + PlayerData.Best);
+
+        // Cat Codex entry
+        var codexBtn = GameUI.Button(p, "Codex", "CAT CODEX   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1), 44, Center, new Vector2(0, -620), new Vector2(620, 110), Brown);
+        codexBtn.onClick.AddListener(() => { AudioManager.Instance.Click(); _codex.Open(); });
+        Loc.Bind(codexBtn, () => Loc.T("codex") + "   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1));
+
+        // coins (top-left) and the only settings entry: a gear icon in the top-right corner
+        GameUI.CoinChip(p, new Vector2(0, 1), new Vector2(169, -95), out _);
         var gear = GameUI.Button(p, "SettingsButton", "", 30, new Vector2(1, 1), new Vector2(-95, -95), new Vector2(110, 110), Brown);
         GameUI.Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, Center, Vector2.zero, new Vector2(78, 78));
         gear.onClick.AddListener(() => { AudioManager.Instance.Click(); _popup.Open(); });
@@ -129,18 +143,22 @@ public class MenuController : MonoBehaviour
 
     void BuildSoonPage(int tab)
     {
-        var go = Panel("Page" + TabNames[tab], Color.clear);
+        var go = Panel("Page" + TabKeys[tab], Color.clear);
         _pages[tab] = go;
         var p = (RectTransform)go.transform;
 
-        var title = GameUI.Label(p, "Title", TabNames[tab], 110, TextAnchor.MiddleCenter, Center, new Vector2(0, 560), new Vector2(1000, 150));
+        var title = GameUI.Label(p, "Title", "", 110, TextAnchor.MiddleCenter, Center, new Vector2(0, 560), new Vector2(1000, 150));
         title.color = Ink;
         Outline(title, Color.white, 4);
+        Loc.Bind(title, () => Loc.T(TabKeys[tab]));
         GameUI.Img(p, "Icon", CatSprites.TabIcon(tab), new Color(0.85f, 0.75f, 0.6f), Center, new Vector2(0, 260), new Vector2(260, 260));
-        var soon = GameUI.Label(p, "Soon", "COMING SOON", 96, TextAnchor.MiddleCenter, Center, new Vector2(0, -20), new Vector2(1000, 130));
+        var soon = GameUI.Label(p, "Soon", "", 96, TextAnchor.MiddleCenter, Center, new Vector2(0, -20), new Vector2(1000, 130));
         soon.color = Orange;
         Outline(soon, Color.white, 4);
-        GameUI.Label(p, "Hint", "We are working on it. Stay tuned!", 42, TextAnchor.MiddleCenter, Center, new Vector2(0, -130), new Vector2(1000, 70)).color = Soft;
+        Loc.Bind(soon, () => Loc.T("soon"));
+        var hint = GameUI.Label(p, "Hint", "", 42, TextAnchor.MiddleCenter, Center, new Vector2(0, -130), new Vector2(1000, 70));
+        hint.color = Soft;
+        Loc.Bind(hint, () => Loc.T("soon_hint"));
         _soonCats[tab] = GameUI.Img(p, "Cat", CatSprites.Icon(tab == 0 ? 3 : (tab == 2 ? 8 : 9)), Color.white, Center, new Vector2(0, -360), new Vector2(240, 240)).rectTransform;
 
         go.SetActive(false);
@@ -166,8 +184,10 @@ public class MenuController : MonoBehaviour
         {
             float cx = (i + 0.5f) / 4f;
             _tabIcons[i] = GameUI.Img(_root, "TabIcon" + i, CatSprites.TabIcon(i), Brown, new Vector2(cx, 0), new Vector2(0, 122), new Vector2(76, 76));
-            _tabLabels[i] = GameUI.Label(_root, "TabLabel" + i, TabNames[i], 30, TextAnchor.MiddleCenter, new Vector2(cx, 0), new Vector2(0, 56), new Vector2(240, 44));
+            _tabLabels[i] = GameUI.Label(_root, "TabLabel" + i, "", 30, TextAnchor.MiddleCenter, new Vector2(cx, 0), new Vector2(0, 56), new Vector2(240, 44));
             _tabLabels[i].fontStyle = FontStyle.Bold;
+            string tabKey = TabKeys[i];
+            Loc.Bind(_tabLabels[i], () => Loc.T(tabKey));
 
             // transparent hit area covering the whole cell
             var hit = GameUI.Img(_root, "TabHit" + i, SpriteFactory.Square, new Color(0, 0, 0, 0), new Vector2(0, 0), new Vector2(0, TabBarHeight * 0.5f), new Vector2(0, TabBarHeight));
@@ -232,6 +252,7 @@ public class MenuController : MonoBehaviour
         AudioManager.Instance.Merge(2, 1);          // meow
         Haptics.Light();
         _popup.Close();
+        _codex.Close();
         _loadingPanel.SetActive(true);
         StartCoroutine(LoadGame());
     }
@@ -262,7 +283,7 @@ public class MenuController : MonoBehaviour
         _barFill.sizeDelta = new Vector2(BarWidth * p, 36f);
         _percent.text = Mathf.RoundToInt(p * 100f) + "%";
         int dots = (int)(Time.unscaledTime * 3f) % 4;
-        _loadingText.text = "Loading" + new string('.', dots);
+        _loadingText.text = Loc.T("loading") + new string('.', dots);
     }
 
     void Update()
@@ -300,7 +321,11 @@ public class MenuController : MonoBehaviour
             _loadingCat.anchoredPosition = pos;
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) && !_loading) _popup.Toggle();   // Android back button
+        if (Input.GetKeyDown(KeyCode.Escape) && !_loading)   // Android back button
+        {
+            if (_codex.IsOpen) _codex.Close();
+            else _popup.Toggle();
+        }
     }
 
     // ------------------------------------------------------------------ helpers

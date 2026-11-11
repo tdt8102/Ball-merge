@@ -44,7 +44,7 @@ public class Fx : MonoBehaviour
             p.Vel = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * speed * Random.Range(0.4f, 1f);
             p.Max = p.Life = Random.Range(0.35f, 0.7f);
             p.Size = size * Random.Range(0.6f, 1.2f);
-            // lighten the colour a bit so bursts pop against the fruit
+            // lighten the colour a bit so bursts pop against the cat
             p.Col = Color.Lerp(color, Color.white, Random.Range(0.1f, 0.45f));
             p.R.color = p.Col;
             _live.Add(p);

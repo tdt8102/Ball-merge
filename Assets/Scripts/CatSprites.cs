@@ -11,40 +11,40 @@ public static partial class CatSprites
     const int Size = 256;
     const float Span = 1.2f;      // world units covered by the texture; the round head has diameter 1
 
-    static readonly Sprite[] Bodies = new Sprite[FruitDatabase.MaxLevel + 1];
-    static readonly Sprite[] Eyes = new Sprite[FruitDatabase.MaxLevel + 1];
-    static readonly Sprite[] Icons = new Sprite[FruitDatabase.MaxLevel + 1];
+    static readonly Sprite[] Bodies = new Sprite[CatDatabase.MaxLevel + 1];
+    static readonly Sprite[] Eyes = new Sprite[CatDatabase.MaxLevel + 1];
+    static readonly Sprite[] Icons = new Sprite[CatDatabase.MaxLevel + 1];
 
     enum Pattern { None, Tabby, Calico, Siamese, Tuxedo }
     enum Accessory { None, Bow, Crown, RoyalCrown }
 
-    struct Cat
+    struct CatLook
     {
         public Pattern Pat;
         public Accessory Acc;
         public Color Eye;
-        public Cat(Pattern p, Accessory a, Color eye) { Pat = p; Acc = a; Eye = eye; }
+        public CatLook(Pattern p, Accessory a, Color eye) { Pat = p; Acc = a; Eye = eye; }
     }
 
-    // Coat colours live in FruitDatabase.Colors; this table has everything else.
-    static readonly Cat[] Cats =
+    // Coat colours live in CatDatabase.Colors; this table has everything else.
+    static readonly CatLook[] Cats =
     {
-        new Cat(Pattern.None,    Accessory.None,       Hex("59A6F2")), // 0 white, blue eyes
-        new Cat(Pattern.Tabby,   Accessory.None,       Hex("73CC66")), // 1 gray tabby
-        new Cat(Pattern.None,    Accessory.None,       Hex("FAD940")), // 2 black
-        new Cat(Pattern.Tabby,   Accessory.None,       Hex("80CC4D")), // 3 orange tabby
-        new Cat(Pattern.Calico,  Accessory.None,       Hex("F2B333")), // 4 calico
-        new Cat(Pattern.Siamese, Accessory.None,       Hex("4D99F2")), // 5 siamese
-        new Cat(Pattern.Tabby,   Accessory.None,       Hex("F2B333")), // 6 brown tabby
-        new Cat(Pattern.Tuxedo,  Accessory.None,       Hex("B3E64D")), // 7 tuxedo
-        new Cat(Pattern.None,    Accessory.Bow,        Hex("73CC66")), // 8 blue-gray with bow
-        new Cat(Pattern.None,    Accessory.Crown,      Hex("4D99F2")), // 9 golden with crown
-        new Cat(Pattern.None,    Accessory.RoyalCrown, Hex("FF8AD0")), // 10 royal purple
+        new CatLook(Pattern.None,    Accessory.None,       Hex("59A6F2")), // 0 white, blue eyes
+        new CatLook(Pattern.Tabby,   Accessory.None,       Hex("73CC66")), // 1 gray tabby
+        new CatLook(Pattern.None,    Accessory.None,       Hex("FAD940")), // 2 black
+        new CatLook(Pattern.Tabby,   Accessory.None,       Hex("80CC4D")), // 3 orange tabby
+        new CatLook(Pattern.Calico,  Accessory.None,       Hex("F2B333")), // 4 calico
+        new CatLook(Pattern.Siamese, Accessory.None,       Hex("4D99F2")), // 5 siamese
+        new CatLook(Pattern.Tabby,   Accessory.None,       Hex("F2B333")), // 6 brown tabby
+        new CatLook(Pattern.Tuxedo,  Accessory.None,       Hex("B3E64D")), // 7 tuxedo
+        new CatLook(Pattern.None,    Accessory.Bow,        Hex("73CC66")), // 8 blue-gray with bow
+        new CatLook(Pattern.None,    Accessory.Crown,      Hex("4D99F2")), // 9 golden with crown
+        new CatLook(Pattern.None,    Accessory.RoyalCrown, Hex("FF8AD0")), // 10 royal purple
     };
 
     public static Sprite Get(int level)
     {
-        level = Mathf.Clamp(level, 0, FruitDatabase.MaxLevel);
+        level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
         if (Bodies[level] == null) Bodies[level] = MakeSprite(DrawBody(level), Size, Span);
         return Bodies[level];
     }
@@ -52,7 +52,7 @@ public static partial class CatSprites
     /// <summary>Head with the eyes baked in, for UI (menu, next preview, chain). In the game the eyes are separate so they can blink.</summary>
     public static Sprite Icon(int level)
     {
-        level = Mathf.Clamp(level, 0, FruitDatabase.MaxLevel);
+        level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
         if (Icons[level] == null)
         {
             var cv = DrawBody(level);
@@ -83,7 +83,7 @@ public static partial class CatSprites
 
     public static Sprite Eye(int level)
     {
-        level = Mathf.Clamp(level, 0, FruitDatabase.MaxLevel);
+        level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
         if (Eyes[level] == null) Eyes[level] = MakeSprite(DrawEye(level), 64, 1f);
         return Eyes[level];
     }
@@ -93,7 +93,7 @@ public static partial class CatSprites
     static Canvas DrawBody(int level)
     {
         var cat = Cats[level];
-        Color coat = FruitDatabase.Colors[level];
+        Color coat = CatDatabase.Colors[level];
         Color line = Color.Lerp(coat, new Color(0.15f, 0.1f, 0.12f), 0.6f);
         Color dark = Color.Lerp(coat, Color.black, 0.3f);
         Color pink = new Color(1f, 0.72f, 0.8f);

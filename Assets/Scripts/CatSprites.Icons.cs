@@ -4,6 +4,25 @@ using UnityEngine;
 public static partial class CatSprites
 {
     static readonly Sprite[] TabIcons = new Sprite[4];
+    static Sprite _coin;
+
+    /// <summary>Gold coin with a paw print.</summary>
+    public static Sprite CoinIcon()
+    {
+        if (_coin != null) return _coin;
+        var cv = new Canvas(128, 1f, new Color(0.6f, 0.38f, 0.05f));
+        Color rim = new Color(0.62f, 0.4f, 0.06f), gold = new Color(1f, 0.8f, 0.22f), ring = new Color(0.93f, 0.66f, 0.1f), paw = new Color(0.8f, 0.5f, 0.05f);
+        cv.Paint(Circle(0, 0, 0.5f), rim);
+        cv.Paint(Circle(0, 0, 0.43f), gold);
+        cv.Paint(Circle(0, 0, 0.34f), ring);
+        cv.Paint(Circle(0, 0, 0.3f), gold);
+        cv.Paint(Ellipse(0, -0.07f, 0.13f, 0.1f), paw);                       // pad
+        foreach (var t in new[] { new Vector2(-0.16f, 0.08f), new Vector2(-0.055f, 0.17f), new Vector2(0.055f, 0.17f), new Vector2(0.16f, 0.08f) })
+            cv.Paint(Circle(t.x, t.y, 0.052f), paw);                          // toes
+        cv.Paint(Cap(-0.3f, 0.2f, -0.18f, 0.32f, 0.018f), new Color(1f, 1f, 0.85f, 0.8f));   // shine
+        _coin = MakeSprite(cv, 128, 1f);
+        return _coin;
+    }
 
     /// <summary>0 = gacha (gift), 1 = home, 2 = skin (t-shirt), 3 = shop (gem).</summary>
     public static Sprite TabIcon(int kind)

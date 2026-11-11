@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>One merge-able ball. Physics lives on the root, visuals on a scaled child.</summary>
-public class Fruit : MonoBehaviour
+public class Cat : MonoBehaviour
 {
     public int Level { get; private set; }
     public float Radius { get; private set; }
@@ -29,11 +29,11 @@ public class Fruit : MonoBehaviour
         }
     }
 
-    public static Fruit Create(int level, Vector2 pos, PhysicsMaterial2D mat, bool preview)
+    public static Cat Create(int level, Vector2 pos, PhysicsMaterial2D mat, bool preview)
     {
-        var go = new GameObject("Fruit_" + level);
+        var go = new GameObject("Cat_" + level);
         go.transform.position = pos;
-        var f = go.AddComponent<Fruit>();
+        var f = go.AddComponent<Cat>();
         f.Init(level, mat, preview);
         return f;
     }
@@ -41,7 +41,7 @@ public class Fruit : MonoBehaviour
     void Init(int level, PhysicsMaterial2D mat, bool preview)
     {
         Level = level;
-        Radius = FruitDatabase.Radius[level];
+        Radius = CatDatabase.Radius[level];
 
         // visual (circle sprite scaled to diameter)
         _visual = new GameObject("Visual").transform;
@@ -144,9 +144,9 @@ public class Fruit : MonoBehaviour
     void TryMerge(Collision2D c)
     {
         if (Merging || !Dropped) return;
-        var other = c.collider.GetComponent<Fruit>();
+        var other = c.collider.GetComponent<Cat>();
         if (other == null || other.Merging || !other.Dropped || other.Level != Level) return;
-        // both fruits see the collision; only the one with the lower id performs the merge
+        // both cats see the collision; only the one with the lower id performs the merge
         if (GetInstanceID() > other.GetInstanceID()) return;
         GameManager.Instance.Merge(this, other);
     }

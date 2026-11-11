@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -11,6 +12,17 @@ public class GameUI : MonoBehaviour
     Image _nextIcon;
     GameObject _gameOver;
     SettingsPopup _popup;
+    Text _coinText, _finalCoins;
+    RectTransform _coinChip;
+    float _coinPop;
+    int _lastCoins = -1;
+    // "new cat" banner
+    RectTransform _toast;
+    CanvasGroup _toastGroup;
+    Image _toastIcon;
+    Text _toastName, _toastReward;
+    readonly Queue<Vector2Int> _toastQueue = new Queue<Vector2Int>();
+    float _toastT = -1f;
     float _pop;
     int _lastScore;
     Text _debug;
@@ -41,16 +53,18 @@ public class GameUI : MonoBehaviour
         _score = Label(root, "Score", "0", 90, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(40, -40), new Vector2(520, 110));
         _best = Label(root, "Best", "BEST 0", 40, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(44, -150), new Vector2(520, 50));
         _best.color = new Color(0.4f, 0.3f, 0.25f);
+        _coinText = CoinChip(root, new Vector2(0, 1), new Vector2(169, -245), out _coinChip);
 
-        // --- next fruit (top-right) ---
+        // --- next cat (top-right) ---
         var nextLbl = Label(root, "NextLabel", "NEXT", 36, TextAnchor.UpperCenter, new Vector2(1, 1), new Vector2(-190, -30), new Vector2(200, 44));
+        Loc.Bind(nextLbl, () => Loc.T("next"));
         nextLbl.color = new Color(0.4f, 0.3f, 0.25f);
         _nextIcon = Img(root, "NextIcon", CatSprites.Icon(0), Color.white, new Vector2(1, 1), new Vector2(-190, -140), new Vector2(100, 100));
 
         // --- evolution chain (bottom) ---
         const float slot = 90f;
-        float startX = -slot * (FruitDatabase.MaxLevel) * 0.5f;
-        for (int i = 0; i <= FruitDatabase.MaxLevel; i++)
+        float startX = -slot * (CatDatabase.MaxLevel) * 0.5f;
+        for (int i = 0; i <= CatDatabase.MaxLevel; i++)
         {
             float size = (30f + i * 4f) * 1.2f;     // sprite is 1.2x the head diameter (ears/accessories)
             Img(root, "Chain" + i, CatSprites.Icon(i), Color.white, new Vector2(0.5f, 0), new Vector2(startX + i * slot, 70f), new Vector2(size, size));
@@ -62,17 +76,24 @@ public class GameUI : MonoBehaviour
         go.SetParent(root, false);
         go.anchorMin = Vector2.zero; go.anchorMax = Vector2.one; go.offsetMin = go.offsetMax = Vector2.zero;
         _gameOver.GetComponent<Image>().color = new Color(0, 0, 0, 0.65f);
-        Label(go, "Title", "GAME OVER", 120, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 220), new Vector2(900, 160));
+        var goTitle = Label(go, "Title", "GAME OVER", 120, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 220), new Vector2(900, 160));
+        Loc.Bind(goTitle, () => Loc.T("game_over"));
+        _finalCoins = Label(go, "Coins", "", 50, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, -35), new Vector2(900, 70));
+        _finalCoins.color = new Color(1f, 0.85f, 0.3f);
         _finalScore = Label(go, "Final", "0", 100, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(900, 140));
         var again = Button(go, "Again", "PLAY AGAIN", 60, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(520, 130), new Color(0.2f, 0.65f, 0.4f));
         again.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
+        Loc.Bind(again, () => Loc.T("play_again"));
         var home = Button(go, "Home", "MENU", 50, new Vector2(0.5f, 0.5f), new Vector2(0, -320), new Vector2(520, 110), new Color(0.55f, 0.36f, 0.24f));
         home.onClick.AddListener(GoToMenu);
+        Loc.Bind(home, () => Loc.T("menu"));
         _gameOver.SetActive(false);
 
+        Loc.Changed += OnLanguageChanged;
+        BuildToast(root);
         BuildSettings(root);   // created last so the gear button and its panel draw on top of the HUD
 
-        // Open the page with ?debug (or #debug) to show FPS / fruit count / last error on screen.
+        // Open the page with ?debug (or #debug) to show FPS / cat count / last error on screen.
         if (Application.absoluteURL != null && Application.absoluteURL.Contains("debug"))
         {
             _debug = Label(root, "Debug", "", 28, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(40, -330), new Vector2(900, 200));
@@ -100,9 +121,14 @@ public class GameUI : MonoBehaviour
             onMenu: GoToMenu);
     }
 
+    void OnLanguageChanged() => Refresh();
+
+    void OnDestroy() => Loc.Changed -= OnLanguageChanged;
+
     static void GoToMenu()
     {
         Time.timeScale = 1f;               // the settings popup pauses the game
+        PlayerData.Flush();
         AudioManager.Instance.Click();
         SceneManager.LoadScene(MenuController.MenuScene);
     }
@@ -121,10 +147,17 @@ public class GameUI : MonoBehaviour
             if (_dbgT >= 0.5f)
             {
                 _dbgT = 0f;
-                _debug.text = $"fps {_fps:F0}  worst {_worst * 1000f:F0}ms  fruits {_gm.FruitCount}\n" +
+                _debug.text = $"fps {_fps:F0}  worst {_worst * 1000f:F0}ms  cats {_gm.CatCount}\n" +
                               $"mem {System.GC.GetTotalMemory(false) / 1048576f:F1}MB  err: {_lastError}";
                 if (_fps > 30f) _worst = 0f;     // keep the worst frame visible while the game is slow
             }
+        }
+
+        UpdateToast();
+        if (_coinPop > 0f)
+        {
+            _coinPop = Mathf.Max(0f, _coinPop - Time.unscaledDeltaTime * 4f);
+            _coinChip.localScale = Vector3.one * (1f + 0.15f * _coinPop);
         }
 
         // score "bump" when it increases
@@ -135,27 +168,104 @@ public class GameUI : MonoBehaviour
         }
     }
 
+    public void RefreshCoins()
+    {
+        if (_coinText == null) return;
+        int c = PlayerData.Coins;
+        _coinText.text = c.ToString();
+        if (_lastCoins >= 0 && c > _lastCoins) _coinPop = 1f;
+        _lastCoins = c;
+    }
+
     public void Refresh()
     {
+        RefreshCoins();
         if (_gm == null || _score == null) return;
         if (_gm.Score > _lastScore) _pop = 1f;
         _lastScore = _gm.Score;
         _score.text = _gm.Score.ToString();
-        _best.text = "BEST " + _gm.Best;
+        _best.text = Loc.T("best") + " " + _gm.Best;
         _nextIcon.sprite = CatSprites.Icon(_gm.NextLevel);
-        float d = (40f + FruitDatabase.Radius[_gm.NextLevel] * 110f) * 1.2f;
+        float d = (40f + CatDatabase.Radius[_gm.NextLevel] * 110f) * 1.2f;
         _nextIcon.rectTransform.sizeDelta = new Vector2(d, d);
     }
 
     public void ShowGameOver(bool show)
     {
         _gameOver.SetActive(show);
-        if (show) _finalScore.text = "Score  " + _gm.Score;
+        if (show)
+        {
+            _finalScore.text = Loc.T("score") + "  " + _gm.Score;
+            _finalCoins.text = Loc.T("coins") + "  +" + _gm.RunCoins;
+        }
+    }
+
+    // ---------------------------------------------------------------- coin chip and "new cat" banner
+
+    /// <summary>Small pill with a coin icon and the coin total. Returns the amount text; chip is the pill (for bump animation).</summary>
+    public static Text CoinChip(RectTransform parent, Vector2 anchor, Vector2 pos, out RectTransform chip)
+    {
+        var border = RoundImg(parent, "CoinChip", new Color(0.55f, 0.36f, 0.24f), anchor, pos, new Vector2(250, 72), 36f);
+        chip = border.rectTransform;
+        var cr = (RectTransform)border.transform;
+        RoundImg(cr, "Fill", new Color(1f, 0.97f, 0.9f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(242, 64), 32f);
+        Img(cr, "Coin", CatSprites.CoinIcon(), Color.white, new Vector2(0, 0.5f), new Vector2(40, 0), new Vector2(54, 54));
+        var t = Label(cr, "Amount", PlayerData.Coins.ToString(), 40, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(76, 0), new Vector2(165, 60));
+        t.color = new Color(0.36f, 0.22f, 0.15f);
+        return t;
+    }
+
+    void BuildToast(RectTransform root)
+    {
+        var gold = new Color(1f, 0.85f, 0.3f);
+        var card = RoundImg(root, "DiscoveryToast", new Color(0.36f, 0.22f, 0.15f, 0.96f), new Vector2(0.5f, 1f), new Vector2(0, -690), new Vector2(780, 150), 46f);
+        _toast = card.rectTransform;
+        _toastGroup = card.gameObject.AddComponent<CanvasGroup>();
+        _toastGroup.blocksRaycasts = false;
+        _toastGroup.interactable = false;
+        var cr = (RectTransform)card.transform;
+        _toastIcon = Img(cr, "Cat", CatSprites.Icon(1), Color.white, new Vector2(0, 0.5f), new Vector2(95, 0), new Vector2(130, 130));
+        var toastTitle = Label(cr, "Title", "NEW CAT!", 34, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(185, 34), new Vector2(300, 44));
+        toastTitle.color = gold;
+        Loc.Bind(toastTitle, () => Loc.T("new_cat"));
+        _toastName = Label(cr, "Name", "", 48, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(185, -16), new Vector2(360, 60));
+        _toastName.color = Color.white;
+        Img(cr, "Coin", CatSprites.CoinIcon(), Color.white, new Vector2(1, 0.5f), new Vector2(-165, 0), new Vector2(54, 54));
+        _toastReward = Label(cr, "Reward", "+0", 46, TextAnchor.MiddleLeft, new Vector2(1, 0.5f), new Vector2(-132, 0), new Vector2(120, 60));
+        _toastReward.color = gold;
+        card.gameObject.SetActive(false);
+    }
+
+    /// <summary>Queue a "new cat discovered" banner (shown one after another).</summary>
+    public void ShowDiscovery(int level, int reward) => _toastQueue.Enqueue(new Vector2Int(level, reward));
+
+    void UpdateToast()
+    {
+        if (_toast == null) return;
+        if (_toastT < 0f && _toastQueue.Count > 0)
+        {
+            var q = _toastQueue.Dequeue();
+            _toastIcon.sprite = CatSprites.Icon(q.x);
+            _toastName.text = Loc.CatName(q.x);
+            _toastReward.text = "+" + q.y;
+            _toast.gameObject.SetActive(true);
+            _toastT = 0f;
+        }
+        if (_toastT < 0f) return;
+
+        const float dur = 2.4f;
+        _toastT += Time.unscaledDeltaTime;
+        _toastGroup.alpha = Mathf.Clamp01(_toastT / 0.2f) * Mathf.Clamp01((dur - _toastT) / 0.4f);
+        _toast.localScale = Vector3.one * (0.85f + 0.15f * Mathf.Clamp01(_toastT / 0.25f));
+        if (_toastT >= dur)
+        {
+            _toastT = -1f;
+            _toast.gameObject.SetActive(false);
+        }
     }
 
     // ---------------------------------------------------------------- combo popup
 
-    static readonly string[] ComboWords = { "Good!", "Great!", "Awesome!", "Amazing!", "Incredible!" };
     static readonly Color[] ComboColors =
     {
         new Color(1f, 0.85f, 0.3f), new Color(1f, 0.6f, 0.2f), new Color(1f, 0.4f, 0.4f),
@@ -165,12 +275,12 @@ public class GameUI : MonoBehaviour
     /// <summary>Small floating encouragement text at a world position. combo >= 2.</summary>
     public void ShowCombo(Vector2 worldPos, int combo)
     {
-        int tier = Mathf.Clamp(combo - 2, 0, ComboWords.Length - 1);
+        int tier = Mathf.Clamp(combo - 2, 0, 4);
         var root = (RectTransform)transform;
         Vector2 screen = Camera.main.WorldToScreenPoint(worldPos);
         RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screen, null, out var local);
 
-        var t = Label(root, "Combo", ComboWords[tier] + " x" + combo, 52 + tier * 6, TextAnchor.MiddleCenter,
+        var t = Label(root, "Combo", Loc.T("combo" + tier) + " x" + combo, 52 + tier * 6, TextAnchor.MiddleCenter,
                       new Vector2(0.5f, 0.5f), local, new Vector2(600, 90));
         t.color = ComboColors[tier];
         var outline = t.gameObject.AddComponent<Outline>();
@@ -217,6 +327,7 @@ public class GameUI : MonoBehaviour
         t.alignment = align;
         t.color = new Color(0.3f, 0.2f, 0.15f);
         t.horizontalOverflow = HorizontalWrapMode.Overflow;
+        t.verticalOverflow = VerticalWrapMode.Overflow;     // never let a taller font clip the whole line
         t.raycastTarget = false;
         return t;
     }

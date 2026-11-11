@@ -28,7 +28,7 @@ public static class Haptics
     public static void Medium() => Vibrate(25, true);
     public static void Heavy() => Vibrate(60, true);
 
-    /// <summary>Strength by fruit level: small = light tick, big = heavy thud.</summary>
+    /// <summary>Strength by cat level: small = light tick, big = heavy thud.</summary>
     public static void Pulse(int level)
     {
         if (level < 4) Light();

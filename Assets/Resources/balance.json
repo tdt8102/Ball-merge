@@ -1,0 +1,20 @@
+{
+  "radius": [0.25, 0.32, 0.40, 0.48, 0.58, 0.69, 0.81, 0.94, 1.08, 1.23, 1.40],
+  "score": [0, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66],
+  "dropBag": [0, 0, 0, 1, 1, 1, 2, 2, 3, 4],
+
+  "maxMergeScore": 100,
+  "mergeCoinBase": 1,
+  "mergeCoinDivisor": 3,
+  "maxMergeCoins": 30,
+  "discoveryBase": 10,
+  "discoveryStep": 10,
+
+  "gravity": 20.0,
+  "friction": 0.35,
+  "bounciness": 0.08,
+  "dropCooldown": 0.45,
+  "dangerGrace": 1.2,
+  "gameOverDelay": 2.0,
+  "comboWindow": 1.2
+}

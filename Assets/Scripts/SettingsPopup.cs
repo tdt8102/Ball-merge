@@ -3,8 +3,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Compact settings popup shared by the Home screen and the game: two switches (sound, haptic) and, in game,
-/// Restart / Menu / Resume. Tapping the dimmed background or X closes it.
+/// Compact settings popup shared by the Home screen and the game: sound and haptic switches, a language selector and,
+/// in game, Restart / Menu / Resume. Tapping the dimmed background or X closes it.
 /// </summary>
 public class SettingsPopup
 {
@@ -18,7 +18,7 @@ public class SettingsPopup
     public bool IsOpen => Root.activeSelf;
 
     readonly Action<bool> _onOpenChanged;
-    Image _sndTrack, _hapTrack;
+    Image _sndTrack, _hapTrack, _enBtn, _viBtn;
     RectTransform _sndKnob, _hapKnob;
 
     SettingsPopup(Action<bool> onOpenChanged) { _onOpenChanged = onOpenChanged; }
@@ -59,49 +59,59 @@ public class SettingsPopup
         dimBtn.transition = Selectable.Transition.None;
         dimBtn.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
 
-        float w = 620f, h = inGame ? 690f : 340f, top = h * 0.5f;
+        float w = 620f, h = inGame ? 790f : 440f, top = h * 0.5f;
         GameUI.RoundImg(rt, "CardBorder", Brown, center, Vector2.zero, new Vector2(w + 10, h + 10), 42f).raycastTarget = true;
         GameUI.RoundImg(rt, "Card", Cream, center, Vector2.zero, new Vector2(w, h), 38f).raycastTarget = true;   // absorbs taps
 
-        GameUI.Label(rt, "Title", "SETTINGS", 54, TextAnchor.MiddleCenter, center, new Vector2(0, top - 70), new Vector2(500, 80)).color = Ink;
+        var title = GameUI.Label(rt, "Title", "", 54, TextAnchor.MiddleCenter, center, new Vector2(0, top - 70), new Vector2(500, 80));
+        title.color = Ink;
+        Loc.Bind(title, () => Loc.T("settings"));
 
         var close = GameUI.Button(rt, "Close", "X", 40, center, new Vector2(w * 0.5f - 62, top - 62), new Vector2(64, 64), Brown);
         close.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
 
-        Row(rt, "Sound", w, top - 170, out _sndTrack, out _sndKnob, () =>
+        Row(rt, "sound", w, top - 170, out _sndTrack, out _sndKnob, () =>
         {
             var a = AudioManager.Instance;
             a.SetMuted(!a.Muted);
             a.Click();                                   // audible only when turning sound ON
             Refresh();
         });
-        Row(rt, "Haptic", w, top - 270, out _hapTrack, out _hapKnob, () =>
+        Row(rt, "haptic", w, top - 270, out _hapTrack, out _hapKnob, () =>
         {
             Haptics.Enabled = !Haptics.Enabled;
             AudioManager.Instance.Click();
             if (Haptics.Enabled) Haptics.Medium();       // let the player feel it
             Refresh();
         });
+        LanguageRow(rt, w, top - 370);
 
         if (inGame)
         {
-            GameUI.Button(rt, "Restart", "RESTART", 40, center, new Vector2(0, top - 390), new Vector2(460, 84), Brown)
-                .onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); onRestart?.Invoke(); });
-            GameUI.Button(rt, "Menu", "MENU", 40, center, new Vector2(0, top - 490), new Vector2(460, 84), Brown)
-                .onClick.AddListener(() => onMenu?.Invoke());
-            GameUI.Button(rt, "Resume", "RESUME", 44, center, new Vector2(0, top - 610), new Vector2(460, 92), On)
-                .onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
+            var restart = GameUI.Button(rt, "Restart", "", 40, center, new Vector2(0, top - 490), new Vector2(460, 84), Brown);
+            restart.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); onRestart?.Invoke(); });
+            Loc.Bind(restart, () => Loc.T("restart"));
+
+            var menu = GameUI.Button(rt, "Menu", "", 40, center, new Vector2(0, top - 590), new Vector2(460, 84), Brown);
+            menu.onClick.AddListener(() => onMenu?.Invoke());
+            Loc.Bind(menu, () => Loc.T("menu"));
+
+            var resume = GameUI.Button(rt, "Resume", "", 44, center, new Vector2(0, top - 710), new Vector2(460, 92), On);
+            resume.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
+            Loc.Bind(resume, () => Loc.T("resume"));
         }
 
         Root.SetActive(false);
     }
 
     /// <summary>Label on the left, pill switch on the right.</summary>
-    static void Row(RectTransform p, string label, float cardWidth, float y, out Image track, out RectTransform knob, UnityEngine.Events.UnityAction onClick)
+    static void Row(RectTransform p, string key, float cardWidth, float y, out Image track, out RectTransform knob, UnityEngine.Events.UnityAction onClick)
     {
         var center = new Vector2(0.5f, 0.5f);
-        GameUI.Label(p, label + "Label", label, 44, TextAnchor.MiddleLeft, center, new Vector2(-cardWidth * 0.5f + 55, y), new Vector2(300, 70)).color = Ink;
-        track = GameUI.RoundImg(p, label + "Switch", Off, center, new Vector2(cardWidth * 0.5f - 55 - 65, y), new Vector2(130, 62), 31f);
+        var label = GameUI.Label(p, key + "Label", "", 44, TextAnchor.MiddleLeft, center, new Vector2(-cardWidth * 0.5f + 55, y), new Vector2(300, 70));
+        label.color = Ink;
+        Loc.Bind(label, () => Loc.T(key));
+        track = GameUI.RoundImg(p, key + "Switch", Off, center, new Vector2(cardWidth * 0.5f - 55 - 65, y), new Vector2(130, 62), 31f);
         track.raycastTarget = true;
         var b = track.gameObject.AddComponent<Button>();
         b.transition = Selectable.Transition.None;
@@ -109,10 +119,29 @@ public class SettingsPopup
         knob = GameUI.Img((RectTransform)track.transform, "Knob", SpriteFactory.Disc, Color.white, center, Vector2.zero, new Vector2(50, 50)).rectTransform;
     }
 
+    /// <summary>Label on the left, EN | VI buttons on the right.</summary>
+    void LanguageRow(RectTransform p, float cardWidth, float y)
+    {
+        var center = new Vector2(0.5f, 0.5f);
+        var label = GameUI.Label(p, "languageLabel", "", 44, TextAnchor.MiddleLeft, center, new Vector2(-cardWidth * 0.5f + 55, y), new Vector2(300, 70));
+        label.color = Ink;
+        Loc.Bind(label, () => Loc.T("language"));
+
+        float right = cardWidth * 0.5f - 55;
+        var vi = GameUI.Button(p, "LangVI", "VI", 32, center, new Vector2(right - 40, y), new Vector2(80, 58), Brown);
+        var en = GameUI.Button(p, "LangEN", "EN", 32, center, new Vector2(right - 40 - 88, y), new Vector2(80, 58), Brown);
+        _viBtn = (Image)vi.targetGraphic;
+        _enBtn = (Image)en.targetGraphic;
+        en.onClick.AddListener(() => { AudioManager.Instance.Click(); Loc.SetLanguage("en"); Refresh(); });
+        vi.onClick.AddListener(() => { AudioManager.Instance.Click(); Loc.SetLanguage("vi"); Refresh(); });
+    }
+
     void Refresh()
     {
         SetSwitch(_sndTrack, _sndKnob, !AudioManager.Instance.Muted);
         SetSwitch(_hapTrack, _hapKnob, Haptics.Enabled);
+        _enBtn.color = Loc.Language == "en" ? On : Brown;
+        _viBtn.color = Loc.Language == "vi" ? On : Brown;
     }
 
     static void SetSwitch(Image track, RectTransform knob, bool on)

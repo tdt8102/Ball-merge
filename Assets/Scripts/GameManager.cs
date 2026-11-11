@@ -15,33 +15,34 @@ public class GameManager : MonoBehaviour
     const float HalfWidth = 3f;
     const float FloorY = -5.2f;
     const float WallTopY = 3.8f;
-    const float DangerY = 3.0f;       // fruits resting above this line for too long = game over
+    const float DangerY = 3.0f;       // cats resting above this line for too long = game over
     const float SpawnY = 4.5f;        // dropper height
     const float WallThickness = 0.5f;
     const float ViewWidth = 7.4f;     // world width always visible on screen
     const float MinViewHeightHalf = 6.6f;
 
-    const float DropCooldown = 0.45f;
-    const float GameOverDelay = 2.0f;
-    const float DangerGrace = 1.2f;   // a freshly dropped fruit may be above the line this long
+    static float DropCooldown => Balance.Current.dropCooldown;
+    static float GameOverDelay => Balance.Current.gameOverDelay;
+    static float DangerGrace => Balance.Current.dangerGrace;   // a freshly dropped cat may be above the line this long
 
     public int Score { get; private set; }
     public int Best { get; private set; }
     public int NextLevel { get; private set; }
     public bool IsGameOver { get; private set; }
     public bool Paused { get; set; }               // settings panel open
-    public int FruitCount => _fruits.Count;
+    public int RunCoins { get; private set; }      // coins earned in the current game
+    public int CatCount => _cats.Count;
 
     GameUI _ui;
     PhysicsMaterial2D _mat;
-    readonly List<Fruit> _fruits = new List<Fruit>();
-    Fruit _held;
+    readonly List<Cat> _cats = new List<Cat>();
+    Cat _held;
     SpriteRenderer _aimLine, _dangerLine;
     float _aimX, _dangerTimer, _cooldown;
     bool _aiming;
     int _combo;
     float _lastMergeTime = -100f, _warnT;
-    const float ComboWindow = 1.2f;   // max gap between merges to count as a combo
+    static float ComboWindow => Balance.Current.comboWindow;   // max gap between merges to count as a combo
 
     void Awake()
     {
@@ -51,10 +52,10 @@ public class GameManager : MonoBehaviour
         Application.targetFrameRate = 60;   // WebGL: keep the default (requestAnimationFrame); a fixed target makes it use setTimeout and stutter on phones
 #endif
         Time.maximumDeltaTime = 0.06f;      // slow frames slow the game down instead of piling up physics steps
-        Physics2D.gravity = new Vector2(0f, -20f);
-        Best = PlayerPrefs.GetInt("best", 0);
+        Physics2D.gravity = new Vector2(0f, -Balance.Current.gravity);
+        Best = PlayerData.Best;
 
-        _mat = new PhysicsMaterial2D("Fruit") { friction = 0.35f, bounciness = 0.08f };
+        _mat = new PhysicsMaterial2D("Cat") { friction = Balance.Current.friction, bounciness = Balance.Current.bounciness };
 
         SetupCamera();
         new GameObject("Audio").AddComponent<AudioManager>();
@@ -160,12 +161,13 @@ public class GameManager : MonoBehaviour
 
     public void NewGame()
     {
-        foreach (var f in _fruits) if (f != null) Destroy(f.gameObject);
-        _fruits.Clear();
+        foreach (var f in _cats) if (f != null) Destroy(f.gameObject);
+        _cats.Clear();
         if (_held != null) Destroy(_held.gameObject);
         _held = null;
 
         Score = 0;
+        RunCoins = 0;
         IsGameOver = false;
         _dangerTimer = 0f;
         _combo = 0;
@@ -173,21 +175,52 @@ public class GameManager : MonoBehaviour
         _cooldown = 0.2f;
         _aiming = false;
         _aimX = 0f;
-        NextLevel = FruitDatabase.RandomDropLevel();
+        NextLevel = CatDatabase.RandomDropLevel();
         _ui.Refresh();
         _ui.ShowGameOver(false);
     }
 
     void SpawnHeld()
     {
-        _held = Fruit.Create(NextLevel, new Vector2(_aimX, SpawnY), _mat, preview: true);
-        _fruits.Add(_held);
-        NextLevel = FruitDatabase.RandomDropLevel();
+        _held = Cat.Create(NextLevel, new Vector2(_aimX, SpawnY), _mat, preview: true);
+        _cats.Add(_held);
+        NotifyAppear(_held.Level);
+        NextLevel = CatDatabase.RandomDropLevel();
         _ui.Refresh();
     }
 
+    // ------------------------------------------------------------------ coins and the Cat Codex
+
+    void AddCoins(int amount)
+    {
+        PlayerData.AddCoins(amount);
+        RunCoins += amount;
+        _ui.RefreshCoins();
+    }
+
+    /// <summary>A cat just appeared (dropped or created by a merge): count it, and reward the first time ever.</summary>
+    void NotifyAppear(int level)
+    {
+        if (!PlayerData.RecordSeen(level)) return;
+        int reward = CatDatabase.DiscoveryReward(level);
+        if (reward <= 0) return;                      // the starter cat is known from the start
+        AddCoins(reward);
+        _ui.ShowDiscovery(level, reward);
+        AudioManager.Instance.Discover();
+        Haptics.Medium();
+    }
+
+    float _flushT;
+
+    void OnApplicationPause(bool paused) { if (paused) PlayerData.Flush(); }
+    void OnApplicationFocus(bool focus) { if (!focus) PlayerData.Flush(); }
+    void OnDestroy() { PlayerData.Flush(); }
+
     void Update()
     {
+        _flushT += Time.unscaledDeltaTime;
+        if (_flushT > 10f) { _flushT = 0f; PlayerData.Flush(); }     // keep the save fresh in case the tab is just closed
+
         if (IsGameOver || Paused) return;
 
         if (_held == null)
@@ -202,8 +235,8 @@ public class GameManager : MonoBehaviour
 
     void HandleInput()
     {
-        // Track the press even while no fruit is held (cooldown). Otherwise a finger that is already
-        // down when the next fruit appears is ignored until the player lifts and taps again.
+        // Track the press even while no cat is held (cooldown). Otherwise a finger that is already
+        // down when the next cat appears is ignored until the player lifts and taps again.
         bool up = Input.GetMouseButtonUp(0);
         if (Input.GetMouseButtonDown(0))
         {
@@ -247,7 +280,7 @@ public class GameManager : MonoBehaviour
 
     // ------------------------------------------------------------------ merging
 
-    public void Merge(Fruit a, Fruit b)
+    public void Merge(Cat a, Cat b)
     {
         if (IsGameOver) return;
         a.Merging = b.Merging = true;
@@ -258,33 +291,36 @@ public class GameManager : MonoBehaviour
         _combo = Time.time - _lastMergeTime <= ComboWindow ? _combo + 1 : 1;
         _lastMergeTime = Time.time;
         if (_combo >= 2) _ui.ShowCombo(pos, _combo);
-        Color col = FruitDatabase.BurstColor(level);
+        Color col = CatDatabase.BurstColor(level);
 
-        _fruits.Remove(a);
-        _fruits.Remove(b);
+        _cats.Remove(a);
+        _cats.Remove(b);
         Destroy(a.gameObject);
         Destroy(b.gameObject);
-        StartCoroutine(Ring(pos, FruitDatabase.Radius[level], col));
+        StartCoroutine(Ring(pos, CatDatabase.Radius[level], col));
 
-        // juice: sound, sparks, haptic, shake (scaled by fruit level / combo)
+        // juice: sound, sparks, haptic, shake (scaled by cat level / combo)
         AudioManager.Instance.Merge(level, _combo);
         Fx.Instance.Burst(pos, col, 6 + level * 2, 2.5f + level * 0.3f);
         Haptics.Pulse(level);
         if (level >= 7) Fx.Instance.Shake(0.04f + 0.012f * (level - 7), 0.22f);
         else if (_combo >= 4) Fx.Instance.Shake(0.03f, 0.15f);
 
-        if (level >= FruitDatabase.MaxLevel)
+        if (level >= CatDatabase.MaxLevel)
         {
-            AddScore(100);          // two biggest fruits: vanish for a bonus
+            AddScore(Balance.Current.maxMergeScore);   // two biggest cats: vanish for a bonus
+            AddCoins(CatDatabase.MergeCoins(CatDatabase.MaxLevel + 1));
             AudioManager.Instance.Fanfare();
-            foreach (var c in FruitDatabase.ConfettiColors) Fx.Instance.Burst(pos, c, 8, 6f, 0.2f);
+            foreach (var c in CatDatabase.ConfettiColors) Fx.Instance.Burst(pos, c, 8, 6f, 0.2f);
             Fx.Instance.Shake(0.25f, 0.4f);
             return;
         }
 
-        var n = Fruit.Create(level + 1, pos, _mat, preview: false);
-        _fruits.Add(n);
-        AddScore(FruitDatabase.Score[level + 1]);
+        var n = Cat.Create(level + 1, pos, _mat, preview: false);
+        _cats.Add(n);
+        AddScore(CatDatabase.Score[level + 1]);
+        AddCoins(CatDatabase.MergeCoins(level + 1));
+        NotifyAppear(level + 1);
     }
 
     void AddScore(int amount)
@@ -293,7 +329,7 @@ public class GameManager : MonoBehaviour
         if (Score > Best)
         {
             Best = Score;
-            PlayerPrefs.SetInt("best", Best);
+            PlayerData.SetBest(Best);
         }
         _ui.Refresh();
     }
@@ -319,7 +355,7 @@ public class GameManager : MonoBehaviour
     void CheckDanger()
     {
         bool danger = false;
-        foreach (var f in _fruits)
+        foreach (var f in _cats)
         {
             if (f == null || !f.Dropped || f.Merging || f.Age < DangerGrace) continue;
             if (f.transform.position.y + f.Radius > DangerY && f.Speed < 0.6f) { danger = true; break; }
@@ -328,7 +364,7 @@ public class GameManager : MonoBehaviour
         _dangerTimer = danger ? _dangerTimer + Time.deltaTime : 0f;
 
         // scared faces + warning tick while in danger
-        foreach (var f in _fruits) if (f != null) f.Worried = danger;
+        foreach (var f in _cats) if (f != null) f.Worried = danger;
         _warnT -= Time.deltaTime;
         if (danger && _warnT <= 0f)
         {
@@ -352,6 +388,7 @@ public class GameManager : MonoBehaviour
         AudioManager.Instance.GameOver();
         Haptics.Heavy();
         Fx.Instance.Shake(0.15f, 0.5f);
+        PlayerData.Flush();
         _ui.ShowGameOver(true);
     }
 }

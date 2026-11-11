@@ -109,6 +109,9 @@ public static class SpriteFactory
         get
         {
             if (_font != null) return _font;
+            // Be Vietnam Pro (OFL, Assets/Resources/Fonts): has the Vietnamese letters the built-in font lacks
+            _font = Resources.Load<Font>("Fonts/BeVietnamPro-Medium");
+            if (_font != null) return _font;
             try { _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); }
             catch { _font = null; }
             if (_font == null) _font = Font.CreateDynamicFontFromOSFont("Arial", 32);
