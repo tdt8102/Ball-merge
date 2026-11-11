@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>{{{ PRODUCT_NAME }}}</title>
+  <!-- start downloading the big files right away instead of after the loader script has run -->
+  <link rel="preload" href="Build/{{{ CODE_FILENAME }}}" as="fetch" crossorigin>
+  <link rel="preload" href="Build/{{{ DATA_FILENAME }}}" as="fetch" crossorigin>
+  <link rel="preload" href="Build/{{{ FRAMEWORK_FILENAME }}}" as="script">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     html, body { margin: 0; height: 100%; background: #1d1612; overflow: hidden; touch-action: none; }
@@ -36,6 +40,12 @@
       f.onclick = function () { location.reload(); };
     });
   </script>
+  <script>
+    // Save the game when the page is hidden (app switch, tab close): the last reliable moment on a phone browser.
+    function saveNow() { try { if (window.unityGame) window.unityGame.SendMessage("SaveBridge", "PageHidden"); } catch (e) {} }
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") saveNow(); });
+    window.addEventListener("pagehide", saveNow);
+  </script>
   <script src="Build/{{{ LOADER_FILENAME }}}"></script>
   <script>
     createUnityInstance(document.querySelector("#unity-canvas"), {
@@ -49,7 +59,10 @@
       // phones report devicePixelRatio 3+: cap it to keep GPU memory / fill-rate under control
       devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     }, function (p) { document.getElementById("fill").style.width = (p * 100) + "%"; })
-    .then(function () { document.getElementById("loading").style.display = "none"; })
+    .then(function (instance) {
+      window.unityGame = instance;
+      document.getElementById("loading").style.display = "none";
+    })
     .catch(function (m) { document.getElementById("loading").textContent = "Error: " + m; });
   </script>
 </body>

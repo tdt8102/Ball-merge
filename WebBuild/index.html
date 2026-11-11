@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>CatCatCat</title>
+  <!-- start downloading the big files right away instead of after the loader script has run -->
+  <link rel="preload" href="Build/937ad48546ded02342866a7d7119fd64.wasm" as="fetch" crossorigin>
+  <link rel="preload" href="Build/7dde6117e398c119f2c94cc99fced9dd.data" as="fetch" crossorigin>
+  <link rel="preload" href="Build/6834c829ad920247a82cbe08126206bb.framework.js" as="script">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     html, body { margin: 0; height: 100%; background: #1d1612; overflow: hidden; touch-action: none; }
@@ -36,12 +40,18 @@
       f.onclick = function () { location.reload(); };
     });
   </script>
+  <script>
+    // Save the game when the page is hidden (app switch, tab close): the last reliable moment on a phone browser.
+    function saveNow() { try { if (window.unityGame) window.unityGame.SendMessage("SaveBridge", "PageHidden"); } catch (e) {} }
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") saveNow(); });
+    window.addEventListener("pagehide", saveNow);
+  </script>
   <script src="Build/7a2dbded24d57e056180125b1583e7c4.loader.js"></script>
   <script>
     createUnityInstance(document.querySelector("#unity-canvas"), {
-      dataUrl: "Build/2adf03d8eb3b02d6d9625fc7cb473d96.data",
-      frameworkUrl: "Build/636a33b43d8585d9e7cf5f19a4389cd6.framework.js",
-      codeUrl: "Build/c7f484b7bd358038c2518b18ee3c5844.wasm",
+      dataUrl: "Build/7dde6117e398c119f2c94cc99fced9dd.data",
+      frameworkUrl: "Build/6834c829ad920247a82cbe08126206bb.framework.js",
+      codeUrl: "Build/937ad48546ded02342866a7d7119fd64.wasm",
       streamingAssetsUrl: "StreamingAssets",
       companyName: "Proto",
       productName: "CatCatCat",
@@ -49,7 +59,10 @@
       // phones report devicePixelRatio 3+: cap it to keep GPU memory / fill-rate under control
       devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     }, function (p) { document.getElementById("fill").style.width = (p * 100) + "%"; })
-    .then(function () { document.getElementById("loading").style.display = "none"; })
+    .then(function (instance) {
+      window.unityGame = instance;
+      document.getElementById("loading").style.display = "none";
+    })
     .catch(function (m) { document.getElementById("loading").textContent = "Error: " + m; });
   </script>
 </body>

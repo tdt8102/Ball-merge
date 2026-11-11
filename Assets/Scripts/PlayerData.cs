@@ -7,9 +7,29 @@ using UnityEngine;
 /// Stored as one JSON string in PlayerPrefs (IndexedDB on WebGL). Changes are written by Flush(), which the game
 /// calls at game over, when leaving to the menu, when the app is paused and every few seconds while playing.
 /// </summary>
+/// <summary>One cat on the board, as saved.</summary>
+[Serializable]
+public class CatState
+{
+    public int l;                    // level
+    public float x, y, r;            // position and rotation (degrees)
+    public float vx, vy, w;          // velocity and angular velocity
+}
+
+/// <summary>The game in progress, so a closed or reloaded page can continue where the player left off.</summary>
+[Serializable]
+public class RunSnapshot
+{
+    public int score;
+    public int next;                 // level of the next cat to offer
+    public int coins;                // coins earned in this run (for the game-over summary)
+    public List<CatState> cats = new List<CatState>();
+}
+
 public static class PlayerData
 {
     const string Key = "catcatcat.save";
+    const string RunKey = "catcatcat.run";
     const int Levels = CatDatabase.MaxLevel + 1;
 
     [Serializable]
@@ -26,6 +46,34 @@ public static class PlayerData
 
     static Data _d;
     static bool _dirty;
+    static RunSnapshot _run;
+    static bool _runLoaded, _runDirty;
+    static string _lastRunJson;
+
+    /// <summary>Set by the Continue button; GameManager reads it once when the game scene starts.</summary>
+    public static bool ResumeRequested;
+
+    /// <summary>The saved game in progress, or null.</summary>
+    public static RunSnapshot Run
+    {
+        get
+        {
+            if (!_runLoaded) LoadRun();
+            return _run;
+        }
+    }
+
+    public static bool HasRun => Run != null;
+
+    /// <summary>Remember the game in progress (null or an empty board clears it).</summary>
+    public static void SaveRun(RunSnapshot snapshot)
+    {
+        _run = snapshot != null && snapshot.cats.Count > 0 ? snapshot : null;
+        _runLoaded = true;
+        _runDirty = true;
+    }
+
+    public static void ClearRun() => SaveRun(null);
 
     static Data D
     {
@@ -113,10 +161,48 @@ public static class PlayerData
     /// <summary>Write pending changes to disk (no-op when nothing changed).</summary>
     public static void Flush()
     {
-        if (!_dirty || _d == null) return;
-        _dirty = false;
-        PlayerPrefs.SetString(Key, JsonUtility.ToJson(_d));
-        PlayerPrefs.Save();
+        bool write = false;
+        if (_dirty && _d != null)
+        {
+            _dirty = false;
+            PlayerPrefs.SetString(Key, JsonUtility.ToJson(_d));
+            write = true;
+        }
+        if (_runDirty)
+        {
+            _runDirty = false;
+            string json = _run == null ? "" : JsonUtility.ToJson(_run);
+            if (json != _lastRunJson)                         // the board often has not changed since the last save
+            {
+                _lastRunJson = json;
+                if (json.Length == 0) PlayerPrefs.DeleteKey(RunKey); else PlayerPrefs.SetString(RunKey, json);
+                write = true;
+            }
+        }
+        if (write) PlayerPrefs.Save();
+    }
+
+    static void LoadRun()
+    {
+        _runLoaded = true;
+        _run = null;
+        string json = PlayerPrefs.GetString(RunKey, "");
+        _lastRunJson = json;
+        if (string.IsNullOrEmpty(json)) return;
+        try
+        {
+            var r = JsonUtility.FromJson<RunSnapshot>(json);
+            if (r == null || r.cats == null || r.cats.Count == 0 || r.cats.Count > 300) return;
+            foreach (var c in r.cats)
+            {
+                bool ok = c.l >= 0 && c.l <= CatDatabase.MaxLevel
+                          && !float.IsNaN(c.x) && !float.IsNaN(c.y) && Mathf.Abs(c.x) < 20f && Mathf.Abs(c.y) < 20f;
+                if (!ok) return;                              // damaged save: ignore it
+            }
+            r.next = Mathf.Clamp(r.next, 0, CatDatabase.MaxLevel);
+            _run = r;
+        }
+        catch (Exception) { _run = null; }
     }
 
     static void Load()

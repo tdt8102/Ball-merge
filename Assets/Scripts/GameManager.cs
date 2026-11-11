@@ -65,7 +65,12 @@ public class GameManager : MonoBehaviour
         _ui.Build(this);
     }
 
-    void Start() => NewGame();
+    void Start()
+    {
+        var run = PlayerData.ResumeRequested ? PlayerData.Run : null;
+        PlayerData.ResumeRequested = false;
+        if (run != null) ResumeRun(run); else NewGame();
+    }
 
     // ------------------------------------------------------------------ setup
 
@@ -161,6 +166,15 @@ public class GameManager : MonoBehaviour
 
     public void NewGame()
     {
+        ResetBoard();
+        NextLevel = CatDatabase.RandomDropLevel();
+        PlayerData.ClearRun();
+        _ui.Refresh();
+        _ui.ShowGameOver(false);
+    }
+
+    void ResetBoard()
+    {
         foreach (var f in _cats) if (f != null) Destroy(f.gameObject);
         _cats.Clear();
         if (_held != null) Destroy(_held.gameObject);
@@ -175,9 +189,45 @@ public class GameManager : MonoBehaviour
         _cooldown = 0.2f;
         _aiming = false;
         _aimX = 0f;
-        NextLevel = CatDatabase.RandomDropLevel();
+    }
+
+    // ------------------------------------------------------------------ saving the game in progress
+
+    /// <summary>Put the board back the way it was saved (the Continue button).</summary>
+    void ResumeRun(RunSnapshot run)
+    {
+        ResetBoard();
+        Score = run.score;
+        RunCoins = run.coins;
+        NextLevel = run.next;
+        foreach (var c in run.cats)
+        {
+            var cat = Cat.Create(c.l, new Vector2(c.x, c.y), _mat, preview: false);
+            cat.Restore(c.r, new Vector2(c.vx, c.vy), c.w);
+            _cats.Add(cat);
+        }
         _ui.Refresh();
         _ui.ShowGameOver(false);
+    }
+
+    RunSnapshot BuildSnapshot()
+    {
+        var run = new RunSnapshot { score = Score, next = _held != null ? _held.Level : NextLevel, coins = RunCoins };
+        foreach (var c in _cats)
+        {
+            if (c == null || !c.Dropped || c.Merging) continue;       // the cat in hand and cats about to merge are not part of the board
+            var t = c.transform;
+            var v = c.Velocity;
+            run.cats.Add(new CatState { l = c.Level, x = t.position.x, y = t.position.y, r = t.eulerAngles.z, vx = v.x, vy = v.y, w = c.Body.angularVelocity });
+        }
+        return run;
+    }
+
+    /// <summary>Save the game in progress and everything else (called regularly, on pause, on page hide and before leaving).</summary>
+    public void SaveProgress()
+    {
+        if (!IsGameOver) PlayerData.SaveRun(BuildSnapshot());
+        PlayerData.Flush();
     }
 
     void SpawnHeld()
@@ -212,14 +262,12 @@ public class GameManager : MonoBehaviour
 
     float _flushT;
 
-    void OnApplicationPause(bool paused) { if (paused) PlayerData.Flush(); }
-    void OnApplicationFocus(bool focus) { if (!focus) PlayerData.Flush(); }
     void OnDestroy() { PlayerData.Flush(); }
 
     void Update()
     {
         _flushT += Time.unscaledDeltaTime;
-        if (_flushT > 10f) { _flushT = 0f; PlayerData.Flush(); }     // keep the save fresh in case the tab is just closed
+        if (_flushT > 3f) { _flushT = 0f; SaveProgress(); }          // keep the save fresh in case the tab is just closed
 
         if (IsGameOver || Paused) return;
 
@@ -388,6 +436,7 @@ public class GameManager : MonoBehaviour
         AudioManager.Instance.GameOver();
         Haptics.Heavy();
         Fx.Instance.Shake(0.15f, 0.5f);
+        PlayerData.ClearRun();             // a finished game cannot be continued
         PlayerData.Flush();
         _ui.ShowGameOver(true);
     }

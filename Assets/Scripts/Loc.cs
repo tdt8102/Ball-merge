@@ -18,6 +18,8 @@ public static class Loc
     {
         new[] { "subtitle",   "Drop and merge the cats!",            "Thả và gộp mèo nào!" },
         new[] { "play",       "PLAY",                                "CHƠI" },
+        new[] { "continue",   "CONTINUE",                            "TIẾP TỤC" },
+        new[] { "new_game",   "NEW GAME",                            "VÁN MỚI" },
         new[] { "best",       "BEST",                                "KỶ LỤC" },
         new[] { "codex",      "CAT CODEX",                           "SỔ MÈO" },
         new[] { "tab_gacha",  "GACHA",                               "QUAY" },

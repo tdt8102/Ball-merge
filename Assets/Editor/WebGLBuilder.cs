@@ -1,5 +1,6 @@
 using System;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -31,6 +32,12 @@ public static class WebGLBuilder
         // This way an unexpected exception is logged and the game keeps running.
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         PlayerSettings.WebGL.nameFilesAsHashes = true;
+
+        // Smaller download and faster start on phones (the wasm is the biggest file and must be compiled by the browser)
+        PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, Il2CppCodeGeneration.OptimizeSize);
+        PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, ManagedStrippingLevel.High);
+        PlayerSettings.stripEngineCode = true;
+        PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
 
         // hashed file names: wipe old output so stale builds do not pile up in git
         if (System.IO.Directory.Exists(OutDir)) System.IO.Directory.Delete(OutDir, true);

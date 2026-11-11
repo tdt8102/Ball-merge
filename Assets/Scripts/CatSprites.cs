@@ -45,21 +45,30 @@ public static partial class CatSprites
     public static Sprite Get(int level)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        if (Bodies[level] == null) Bodies[level] = MakeSprite(DrawBody(level), Size, Span);
+        Ensure(level);
         return Bodies[level];
+    }
+
+    /// <summary>Draw this cat now (body, icon and eyes) so it does not cost a hitch the first time it is needed.</summary>
+    public static void Prepare(int level) => Ensure(Mathf.Clamp(level, 0, CatDatabase.MaxLevel));
+
+    /// <summary>The head is drawn once and used for both the game sprite and the UI icon (which has the eyes added).</summary>
+    static void Ensure(int level)
+    {
+        if (Bodies[level] != null && Icons[level] != null && Eyes[level] != null) return;
+        var cv = DrawBody(level);
+        Bodies[level] = MakeSprite(cv, Size, Span);
+        var eye = DrawEye(level);
+        Eyes[level] = MakeSprite(eye, 64, 1f);
+        foreach (float sx in new[] { -0.2f, 0.2f }) cv.Overlay(eye, sx, 0.04f, 0.19f);
+        Icons[level] = MakeSprite(cv, Size, Span);
     }
 
     /// <summary>Head with the eyes baked in, for UI (menu, next preview, chain). In the game the eyes are separate so they can blink.</summary>
     public static Sprite Icon(int level)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        if (Icons[level] == null)
-        {
-            var cv = DrawBody(level);
-            var eye = DrawEye(level);
-            foreach (float sx in new[] { -0.2f, 0.2f }) cv.Overlay(eye, sx, 0.04f, 0.19f);
-            Icons[level] = MakeSprite(cv, Size, Span);
-        }
+        Ensure(level);
         return Icons[level];
     }
 
@@ -84,7 +93,7 @@ public static partial class CatSprites
     public static Sprite Eye(int level)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        if (Eyes[level] == null) Eyes[level] = MakeSprite(DrawEye(level), 64, 1f);
+        Ensure(level);
         return Eyes[level];
     }
 

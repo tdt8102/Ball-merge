@@ -35,6 +35,20 @@ public class MenuController : MonoBehaviour
     RectTransform _loadingCat;
     SettingsPopup _popup;
     CodexScreen _codex;
+
+    /// <summary>Built the first time it is opened (11 cat icons are not needed to show Home). Sits above the tab bar, below the popup.</summary>
+    CodexScreen Codex
+    {
+        get
+        {
+            if (_codex == null)
+            {
+                _codex = CodexScreen.Create(_root);
+                _codex.Root.transform.SetSiblingIndex(_popup.Root.transform.GetSiblingIndex());
+            }
+            return _codex;
+        }
+    }
     bool _loading;
 
     // tab bar
@@ -85,7 +99,6 @@ public class MenuController : MonoBehaviour
         _soonCats = new RectTransform[4];
         for (int i = 0; i < 4; i++) if (i != HomeTab) BuildSoonPage(i);
         BuildTabBar();
-        _codex = CodexScreen.Create(_root);          // above the tab bar, below the popup and loading screen
         _popup = SettingsPopup.Create(_root, false);
         BuildLoadingPanel();
         _loadingPanel.SetActive(false);
@@ -117,19 +130,38 @@ public class MenuController : MonoBehaviour
             _bobbers[i] = img.rectTransform;
         }
 
-        var play = GameUI.Button(p, "Play", "PLAY", 90, Center, new Vector2(0, -270), new Vector2(560, 170), new Color(0.2f, 0.65f, 0.4f));
-        play.onClick.AddListener(OnPlay);
-        Loc.Bind(play, () => Loc.T("play"));
+        var green = new Color(0.2f, 0.65f, 0.4f);
+        bool hasRun = PlayerData.HasRun;            // a game in progress was saved: offer to continue it
+        if (hasRun)
+        {
+            var cont = GameUI.Button(p, "Continue", "", 70, Center, new Vector2(0, -240), new Vector2(580, 150), green);
+            cont.onClick.AddListener(() => { PlayerData.ResumeRequested = true; OnPlay(); });
+            Loc.Bind(cont, () => Loc.T("continue"));
 
-        var bestLbl = GameUI.Label(p, "Best", "", 50, TextAnchor.MiddleCenter, Center, new Vector2(0, -460), new Vector2(800, 80));
+            var runInfo = GameUI.Label(p, "RunInfo", "", 36, TextAnchor.MiddleCenter, Center, new Vector2(0, -340), new Vector2(800, 50));
+            runInfo.color = Soft;
+            Loc.Bind(runInfo, () => PlayerData.Run != null ? Loc.T("score") + "  " + PlayerData.Run.score : "");
+
+            var fresh = GameUI.Button(p, "NewGame", "", 42, Center, new Vector2(0, -425), new Vector2(420, 86), Brown);
+            fresh.onClick.AddListener(() => { PlayerData.ResumeRequested = false; OnPlay(); });
+            Loc.Bind(fresh, () => Loc.T("new_game"));
+        }
+        else
+        {
+            var play = GameUI.Button(p, "Play", "PLAY", 90, Center, new Vector2(0, -270), new Vector2(560, 170), green);
+            play.onClick.AddListener(() => { PlayerData.ResumeRequested = false; OnPlay(); });
+            Loc.Bind(play, () => Loc.T("play"));
+        }
+
+        var bestLbl = GameUI.Label(p, "Best", "", 50, TextAnchor.MiddleCenter, Center, new Vector2(0, hasRun ? -545 : -460), new Vector2(800, 80));
 
         bestLbl.color = Soft;
 
         Loc.Bind(bestLbl, () => Loc.T("best") + "  " + PlayerData.Best);
 
         // Cat Codex entry
-        var codexBtn = GameUI.Button(p, "Codex", "CAT CODEX   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1), 44, Center, new Vector2(0, -620), new Vector2(620, 110), Brown);
-        codexBtn.onClick.AddListener(() => { AudioManager.Instance.Click(); _codex.Open(); });
+        var codexBtn = GameUI.Button(p, "Codex", "CAT CODEX   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1), 44, Center, new Vector2(0, hasRun ? -655 : -620), new Vector2(620, 110), Brown);
+        codexBtn.onClick.AddListener(() => { AudioManager.Instance.Click(); Codex.Open(); });
         Loc.Bind(codexBtn, () => Loc.T("codex") + "   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1));
 
         // coins (top-left) and the only settings entry: a gear icon in the top-right corner
@@ -252,7 +284,7 @@ public class MenuController : MonoBehaviour
         AudioManager.Instance.Merge(2, 1);          // meow
         Haptics.Light();
         _popup.Close();
-        _codex.Close();
+        if (_codex != null) _codex.Close();
         _loadingPanel.SetActive(true);
         StartCoroutine(LoadGame());
     }
@@ -263,8 +295,11 @@ public class MenuController : MonoBehaviour
         op.allowSceneActivation = false;               // hold at 90% until the bar has finished
 
         float t = 0f, shown = 0f;
+        int prepared = 0;
         while (true)
         {
+            // use the wait to draw the cats the game will need, one per frame (no hitch when a new cat first shows up)
+            if (prepared <= CatDatabase.MaxLevel) CatSprites.Prepare(prepared++);
             t += Time.unscaledDeltaTime;
             float real = Mathf.Clamp01(op.progress / 0.9f);          // Unity reports 0..0.9 until activation
             float target = Mathf.Min(real, t / MinLoadTime);
@@ -323,7 +358,7 @@ public class MenuController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape) && !_loading)   // Android back button
         {
-            if (_codex.IsOpen) _codex.Close();
+            if (_codex != null && _codex.IsOpen) _codex.Close();
             else _popup.Toggle();
         }
     }

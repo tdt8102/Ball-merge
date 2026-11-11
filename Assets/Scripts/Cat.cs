@@ -17,6 +17,27 @@ public class Cat : MonoBehaviour
     readonly Transform[] _eyes = new Transform[2];
     float _popT = 1f, _blipIn, _lastImpact;
 
+    public Vector2 Velocity
+    {
+#if UNITY_6000_0_OR_NEWER
+        get => Body.linearVelocity;
+        set => Body.linearVelocity = value;
+#else
+        get => Body.velocity;
+        set => Body.velocity = value;
+#endif
+    }
+
+    /// <summary>Put a saved cat back exactly as it was (no pop-in, already past the danger-line grace time).</summary>
+    public void Restore(float angle, Vector2 velocity, float angularVelocity)
+    {
+        transform.rotation = Quaternion.Euler(0f, 0f, angle);
+        Velocity = velocity;
+        Body.angularVelocity = angularVelocity;
+        Age = 5f;
+        _popT = 1f;
+    }
+
     public float Speed
     {
         get

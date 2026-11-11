@@ -128,7 +128,7 @@ public class GameUI : MonoBehaviour
     static void GoToMenu()
     {
         Time.timeScale = 1f;               // the settings popup pauses the game
-        PlayerData.Flush();
+        if (GameManager.Instance != null) GameManager.Instance.SaveProgress();   // the game can be continued from Home
         AudioManager.Instance.Click();
         SceneManager.LoadScene(MenuController.MenuScene);
     }
