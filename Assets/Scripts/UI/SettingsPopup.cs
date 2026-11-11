@@ -20,6 +20,9 @@ public class SettingsPopup
     readonly Action<bool> _onOpenChanged;
     Image _sndTrack, _hapTrack, _enBtn, _viBtn;
     RectTransform _sndKnob, _hapKnob;
+    CheatPanel _cheat;
+    int _titleTaps;
+    float _lastTitleTap;
 
     SettingsPopup(Action<bool> onOpenChanged) { _onOpenChanged = onOpenChanged; }
 
@@ -61,11 +64,20 @@ public class SettingsPopup
 
         float w = 620f, h = inGame ? 790f : 440f, top = h * 0.5f;
         GameUI.RoundImg(rt, "CardBorder", Brown, center, Vector2.zero, new Vector2(w + 10, h + 10), 42f).raycastTarget = true;
-        GameUI.RoundImg(rt, "Card", Cream, center, Vector2.zero, new Vector2(w, h), 38f).raycastTarget = true;   // absorbs taps
+        var card = GameUI.RoundImg(rt, "Card", Cream, center, Vector2.zero, new Vector2(w, h), 38f);
+        card.raycastTarget = true;
+        card.gameObject.AddComponent<Button>().transition = Selectable.Transition.None;   // absorbs taps (they would otherwise reach the dim background and close the popup)
 
         var title = GameUI.Label(rt, "Title", "", 54, TextAnchor.MiddleCenter, center, new Vector2(0, top - 70), new Vector2(500, 80));
         title.color = Ink;
         Loc.Bind(title, () => Loc.T("settings"));
+
+        // tapping the title five times opens the tester's cheat menu (password protected)
+        var titleHit = GameUI.Img(rt, "TitleHit", SpriteFactory.Square, new Color(0, 0, 0, 0), center, new Vector2(0, top - 70), new Vector2(400, 90));
+        titleHit.raycastTarget = true;
+        var titleBtn = titleHit.gameObject.AddComponent<Button>();
+        titleBtn.transition = Selectable.Transition.None;
+        titleBtn.onClick.AddListener(OnTitleTap);
 
         var close = GameUI.Button(rt, "Close", "X", 40, center, new Vector2(w * 0.5f - 62, top - 62), new Vector2(64, 64), Brown);
         close.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
@@ -101,7 +113,18 @@ public class SettingsPopup
             Loc.Bind(resume, () => Loc.T("resume"));
         }
 
+        _cheat = CheatPanel.Create(rt);       // last, so it covers everything in the popup
+
         Root.SetActive(false);
+    }
+
+    void OnTitleTap()
+    {
+        if (Time.unscaledTime - _lastTitleTap > 1.5f) _titleTaps = 0;        // taps must follow each other quickly
+        _lastTitleTap = Time.unscaledTime;
+        if (++_titleTaps < 5) return;
+        _titleTaps = 0;
+        _cheat.Open();
     }
 
     /// <summary>Label on the left, pill switch on the right.</summary>

@@ -12,7 +12,8 @@ public class Cat : MonoBehaviour
 
     public bool Worried { get; set; }               // set by GameManager when the stack is too high
 
-    const float EyeSize = 0.19f;
+    const float BaseEyeSize = 0.19f;
+    float EyeSize;                                  // eye diameter; some cat styles have bigger eyes
     Transform _visual;
     readonly Transform[] _eyes = new Transform[2];
     float _popT = 1f, _blipIn, _lastImpact;
@@ -95,12 +96,14 @@ public class Cat : MonoBehaviour
 
     void AddEyes(Transform parent, int level)
     {
+        var style = Cosmetics.CatOf(level);
+        EyeSize = BaseEyeSize * style.EyeScale;
         int i = 0;
-        foreach (float sx in new[] { -0.2f, 0.2f })
+        foreach (float sx in new[] { -style.EyeX, style.EyeX })
         {
             var eye = new GameObject("Eye").transform;
             eye.SetParent(parent, false);
-            eye.localPosition = new Vector3(sx, 0.04f, 0);
+            eye.localPosition = new Vector3(sx, style.EyeY, 0);
             eye.localScale = Vector3.one * EyeSize;
             var r = eye.gameObject.AddComponent<SpriteRenderer>();
             r.sprite = CatSprites.Eye(level);

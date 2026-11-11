@@ -84,7 +84,7 @@ public class GameManager : MonoBehaviour
         }
         cam.orthographic = true;
         cam.transform.position = new Vector3(0, 0, -10);
-        cam.backgroundColor = new Color(0.98f, 0.93f, 0.84f);
+        cam.backgroundColor = Cosmetics.Bg.Outer;
         cam.clearFlags = CameraClearFlags.SolidColor;
         // Fit width first; make sure the full height is visible too.
         cam.orthographicSize = Mathf.Max(ViewWidth / cam.aspect * 0.5f, MinViewHeightHalf);
@@ -93,13 +93,26 @@ public class GameManager : MonoBehaviour
     void BuildPlayfield()
     {
         var root = new GameObject("Playfield").transform;
+        var bg = Cosmetics.Bg;
+        var frame = Cosmetics.Frame;
 
-        // background panel
+        // background panel (+ the repeating motif of the chosen background)
         float h = WallTopY - FloorY;
-        Quad(root, "Panel", new Vector2(0, FloorY + h * 0.5f), new Vector2(HalfWidth * 2, h),
-             new Color(1f, 0.97f, 0.9f), -10);
+        var panelPos = new Vector2(0, FloorY + h * 0.5f);
+        Quad(root, "Panel", panelPos, new Vector2(HalfWidth * 2, h), bg.Panel, -10);
+        var tile = CatSprites.MotifTile(bg, 1.5f);
+        if (tile != null)
+        {
+            var go = new GameObject("Motif");
+            go.transform.SetParent(root, false);
+            go.transform.position = panelPos;
+            var m = go.AddComponent<SpriteRenderer>();
+            m.sprite = tile;
+            m.drawMode = SpriteDrawMode.Tiled;
+            m.size = new Vector2(HalfWidth * 2, h);
+            m.sortingOrder = -9;
+        }
 
-        Color wallCol = new Color(0.55f, 0.36f, 0.24f);
         float wallH = 20f;
 
         // visible frame: thin tray with round wall tops and a softly rounded outer bottom corner.
@@ -108,11 +121,11 @@ public class GameManager : MonoBehaviour
         float xc = HalfWidth + t * 0.5f, topC = WallTopY - t * 0.5f, botC = FloorY - t * 0.5f;
         foreach (float s in new[] { -1f, 1f })
         {
-            Quad(root, "WallVisual", new Vector2(s * xc, (topC + botC) * 0.5f), new Vector2(t, topC - botC), wallCol, 5);
-            Disc(root, new Vector2(s * xc, topC), t, wallCol, 5);     // round top
-            Disc(root, new Vector2(s * xc, botC), t, wallCol, 5);     // round outer bottom corner
+            FrameBar(root, new Vector2(s * xc, (topC + botC) * 0.5f), new Vector2(t, topC - botC), true, frame);
+            Disc(root, new Vector2(s * xc, topC), t, frame.First, 5);     // round top
+            Disc(root, new Vector2(s * xc, botC), t, frame.First, 5);     // round outer bottom corner
         }
-        Quad(root, "FloorVisual", new Vector2(0, botC), new Vector2(xc * 2f, t), wallCol, 5);
+        FrameBar(root, new Vector2(0, botC), new Vector2(xc * 2f, t), false, frame);
 
         // left / right / floor (colliders only)
         Wall(root, "WallL", new Vector2(-HalfWidth - WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness), new Vector2(WallThickness, wallH));
@@ -122,9 +135,32 @@ public class GameManager : MonoBehaviour
         // danger line
         _dangerLine = Quad(root, "DangerLine", new Vector2(0, DangerY), new Vector2(HalfWidth * 2, 0.06f),
                            new Color(0.9f, 0.2f, 0.2f, 0.45f), 0);
-        // aim guide
-        _aimLine = Quad(root, "Aim", new Vector2(0, (SpawnY + FloorY) * 0.5f), new Vector2(0.04f, SpawnY - FloorY),
-                        new Color(0.3f, 0.3f, 0.3f, 0.18f), 0);
+        // aim guide (dark on light backgrounds, light on dark ones)
+        var aim = bg.Ink;
+        aim.a = 0.22f;
+        _aimLine = Quad(root, "Aim", new Vector2(0, (SpawnY + FloorY) * 0.5f), new Vector2(0.04f, SpawnY - FloorY), aim, 0);
+    }
+
+    /// <summary>One side of the tray. Frames with bands are cut into alternating coloured segments; some have a thin accent line down the middle.</summary>
+    static void FrameBar(Transform parent, Vector2 center, Vector2 size, bool vertical, FrameStyle f)
+    {
+        float length = vertical ? size.y : size.x;
+        if (f.Bands == null)
+            Quad(parent, "WallVisual", center, size, f.Color, 5);
+        else
+        {
+            const float seg = 0.45f;
+            int n = Mathf.CeilToInt(length / seg);
+            for (int i = 0; i < n; i++)
+            {
+                float a = -length * 0.5f + i * seg, b = Mathf.Min(a + seg, length * 0.5f);
+                float mid = (a + b) * 0.5f, len = b - a;
+                Quad(parent, "WallVisual", center + (vertical ? new Vector2(0, mid) : new Vector2(mid, 0)),
+                     vertical ? new Vector2(size.x, len) : new Vector2(len, size.y), f.Bands[i % f.Bands.Length], 5);
+            }
+        }
+        if (f.Accent.a > 0f)
+            Quad(parent, "Accent", center, vertical ? new Vector2(size.x * 0.22f, length) : new Vector2(length, size.y * 0.22f), f.Accent, 6);
     }
 
     static SpriteRenderer Quad(Transform parent, string name, Vector2 pos, Vector2 size, Color color, int order)

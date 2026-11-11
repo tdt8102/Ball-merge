@@ -39,8 +39,11 @@ public static class PlayerData
         public int coins;
         public int best;
         public int[] seen = new int[Levels];     // how many times each cat appeared (drop or merge)
-        public List<string> skins = new List<string> { "default" };   // unlocked skin ids
-        public string skin = "default";          // equipped skin id
+        public List<string> skins = new List<string>();               // owned item ids (cat styles, backgrounds, frames)
+        public string[] catSkin = new string[Levels];                 // equipped cat style per cat level
+        public string bg = Cosmetics.DefaultBg;                       // equipped background
+        public string frame = Cosmetics.DefaultFrame;                 // equipped tray frame
+        public int pity;                                              // gacha pulls since the last Legendary
         public string lang = "";                 // "en", "vi" or "" = follow the device
     }
 
@@ -120,12 +123,11 @@ public static class PlayerData
         set { D.lang = value; _dirty = true; }
     }
 
-    // ---- skins (the Skin tab will use these) ----
-    public static string EquippedSkin => D.skin;
-    public static bool IsSkinUnlocked(string id) => D.skins.Contains(id);
+    // ---- collection: owned items and what is equipped (see Cosmetics) ----
+    public static bool IsOwned(string id) => D.skins.Contains(id);
 
-    /// <summary>Returns true if the skin was newly unlocked.</summary>
-    public static bool UnlockSkin(string id)
+    /// <summary>Returns true if the item was newly unlocked.</summary>
+    public static bool Unlock(string id)
     {
         if (string.IsNullOrEmpty(id) || D.skins.Contains(id)) return false;
         D.skins.Add(id);
@@ -133,12 +135,30 @@ public static class PlayerData
         return true;
     }
 
-    public static bool EquipSkin(string id)
+    public static string CatSkin(int level) => D.catSkin[Mathf.Clamp(level, 0, Levels - 1)];
+
+    public static void SetCatSkin(int level, string id)
     {
-        if (!D.skins.Contains(id)) return false;
-        D.skin = id;
+        D.catSkin[Mathf.Clamp(level, 0, Levels - 1)] = id;
         _dirty = true;
-        return true;
+    }
+
+    public static string Background
+    {
+        get => D.bg;
+        set { D.bg = value; _dirty = true; }
+    }
+
+    public static string Frame
+    {
+        get => D.frame;
+        set { D.frame = value; _dirty = true; }
+    }
+
+    public static int Pity
+    {
+        get => D.pity;
+        set { D.pity = Mathf.Max(0, value); _dirty = true; }
     }
 
     public static void SetBest(int score)
@@ -220,8 +240,19 @@ public static class PlayerData
             _d = new Data { best = PlayerPrefs.GetInt("best", 0) };     // carry over the score from older versions
             _dirty = true;
         }
-        if (_d.skins == null || !_d.skins.Contains("default")) { _d.skins = _d.skins ?? new List<string>(); _d.skins.Insert(0, "default"); }
-        if (string.IsNullOrEmpty(_d.skin) || !_d.skins.Contains(_d.skin)) _d.skin = "default";
+        // collection: the starter items are always owned; anything unknown or not owned falls back to them
+        if (_d.skins == null) _d.skins = new List<string>();
+        _d.skins.Remove("default");                                  // id used before the Skin tab existed
+        foreach (var it in Cosmetics.All)
+            if (it.Default && !_d.skins.Contains(it.Id)) _d.skins.Add(it.Id);
+        if (_d.catSkin == null || _d.catSkin.Length != Levels) _d.catSkin = new string[Levels];
+        for (int i = 0; i < Levels; i++)
+        {
+            var theme = Cosmetics.FindTheme(_d.catSkin[i]);
+            if (theme == null || !_d.skins.Contains(Cosmetics.CatItemOf(theme, i).Id)) _d.catSkin[i] = Cosmetics.DefaultTheme;
+        }
+        if (!(Cosmetics.Find(_d.bg) is BgStyle) || !_d.skins.Contains(_d.bg)) _d.bg = Cosmetics.DefaultBg;
+        if (!(Cosmetics.Find(_d.frame) is FrameStyle) || !_d.skins.Contains(_d.frame)) _d.frame = Cosmetics.DefaultFrame;
         if (_d.seen == null || _d.seen.Length != Levels)
         {
             var fixedSeen = new int[Levels];

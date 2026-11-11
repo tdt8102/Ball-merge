@@ -21,6 +21,15 @@ public class Balance
     public int discoveryBase = 10;           // first time a cat appears = base + level * step (starter cat gives 0)
     public int discoveryStep = 10;
 
+    // ---- gacha ----
+    public int gachaCost = 150;              // coins for one pull (10 pulls = 10x this)
+    public int gachaRateRare = 25;           // percent chance of a Rare item
+    public int gachaRateLegendary = 5;       // percent chance of a Legendary item (the rest is Common)
+    public int gachaPity = 30;               // a Legendary is guaranteed every this many pulls (0 = off)
+    public float dupRefundCommon = 0.25f;    // a duplicate gives back this part of the price of one pull; rarer items give more
+    public float dupRefundRare = 0.4f;
+    public float dupRefundLegendary = 0.6f;
+
     // ---- gameplay ----
     public float gravity = 20f;
     public float friction = 0.35f;
@@ -57,5 +66,8 @@ public class Balance
         if (dropBag == null || dropBag.Length == 0) { dropBag = d.dropBag; }
         for (int i = 0; i < dropBag.Length; i++) dropBag[i] = Mathf.Clamp(dropBag[i], 0, CatDatabase.MaxLevel);
         mergeCoinDivisor = Mathf.Max(1, mergeCoinDivisor);
+        gachaCost = Mathf.Max(1, gachaCost);
+        gachaRateRare = Mathf.Clamp(gachaRateRare, 0, 100);
+        gachaRateLegendary = Mathf.Clamp(gachaRateLegendary, 0, 100 - gachaRateRare);
     }
 }

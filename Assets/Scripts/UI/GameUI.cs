@@ -52,13 +52,16 @@ public class GameUI : MonoBehaviour
         // --- score (top-left) ---
         _score = Label(root, "Score", "0", 90, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(40, -40), new Vector2(520, 110));
         _best = Label(root, "Best", "BEST 0", 40, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(44, -150), new Vector2(520, 50));
-        _best.color = new Color(0.4f, 0.3f, 0.25f);
+        var ink = Cosmetics.Bg.Ink;                       // text colour that reads on the chosen background
+        _score.color = ink;
+        ink.a = 0.8f;
+        _best.color = ink;
         _coinText = CoinChip(root, new Vector2(0, 1), new Vector2(169, -245), out _coinChip);
 
         // --- next cat (top-right) ---
         var nextLbl = Label(root, "NextLabel", "NEXT", 36, TextAnchor.UpperCenter, new Vector2(1, 1), new Vector2(-190, -30), new Vector2(200, 44));
         Loc.Bind(nextLbl, () => Loc.T("next"));
-        nextLbl.color = new Color(0.4f, 0.3f, 0.25f);
+        nextLbl.color = ink;
         _nextIcon = Img(root, "NextIcon", CatSprites.Icon(0), Color.white, new Vector2(1, 1), new Vector2(-190, -140), new Vector2(100, 100));
 
         // --- evolution chain (bottom) ---
@@ -90,6 +93,7 @@ public class GameUI : MonoBehaviour
         _gameOver.SetActive(false);
 
         Loc.Changed += OnLanguageChanged;
+        CheatPanel.CoinsChanged += RefreshCoins;
         BuildToast(root);
         BuildSettings(root);   // created last so the gear button and its panel draw on top of the HUD
 
@@ -123,7 +127,11 @@ public class GameUI : MonoBehaviour
 
     void OnLanguageChanged() => Refresh();
 
-    void OnDestroy() => Loc.Changed -= OnLanguageChanged;
+    void OnDestroy()
+    {
+        Loc.Changed -= OnLanguageChanged;
+        CheatPanel.CoinsChanged -= RefreshCoins;
+    }
 
     static void GoToMenu()
     {

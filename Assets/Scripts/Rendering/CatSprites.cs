@@ -10,12 +10,15 @@ public static partial class CatSprites
 {
     const int Size = 256;
     const float Span = 1.2f;      // world units covered by the texture; the round head has diameter 1
+    const int PixelScale = 6;     // pixel style: drawn at this many canvas pixels per art pixel, then reduced
+    const float EyeWorld = 0.19f; // eye diameter as part of the head diameter (Cat.cs uses the same value)
 
-    static readonly Sprite[] Bodies = new Sprite[CatDatabase.MaxLevel + 1];
-    static readonly Sprite[] Eyes = new Sprite[CatDatabase.MaxLevel + 1];
-    static readonly Sprite[] Icons = new Sprite[CatDatabase.MaxLevel + 1];
+    // [style, level]: each cat style draws its own set, created the first time it is needed
+    static readonly Sprite[,] Bodies = new Sprite[Cosmetics.Cats.Count, CatDatabase.MaxLevel + 1];
+    static readonly Sprite[,] Eyes = new Sprite[Cosmetics.Cats.Count, CatDatabase.MaxLevel + 1];
+    static readonly Sprite[,] Icons = new Sprite[Cosmetics.Cats.Count, CatDatabase.MaxLevel + 1];
 
-    enum Pattern { None, Tabby, Calico, Siamese, Tuxedo }
+    public enum Pattern { None, Tabby, Calico, Siamese, Tuxedo, Dots }
     enum Accessory { None, Bow, Crown, RoyalCrown }
 
     struct CatLook
@@ -42,34 +45,50 @@ public static partial class CatSprites
         new CatLook(Pattern.None,    Accessory.RoyalCrown, Hex("FF8AD0")), // 10 royal purple
     };
 
-    public static Sprite Get(int level)
+    /// <summary>Level used to show what a cat style looks like (tiles, gacha cards).</summary>
+    public const int PreviewLevel = 3;
+
+    /// <summary>Game sprite of this cat in the style it is currently wearing.</summary>
+    public static Sprite Get(int level) => Get(level, Cosmetics.CatIndex(level));
+
+    public static Sprite Get(int level, int style)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        Ensure(level);
-        return Bodies[level];
+        Ensure(level, style);
+        return Bodies[style, level];
     }
 
     /// <summary>Draw this cat now (body, icon and eyes) so it does not cost a hitch the first time it is needed.</summary>
-    public static void Prepare(int level) => Ensure(Mathf.Clamp(level, 0, CatDatabase.MaxLevel));
+    public static void Prepare(int level)
+    {
+        level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
+        Ensure(level, Cosmetics.CatIndex(level));
+    }
+
+    public static bool IsReady(int level, int style) => Icons[style, Mathf.Clamp(level, 0, CatDatabase.MaxLevel)] != null;
 
     /// <summary>The head is drawn once and used for both the game sprite and the UI icon (which has the eyes added).</summary>
-    static void Ensure(int level)
+    static void Ensure(int level, int style)
     {
-        if (Bodies[level] != null && Icons[level] != null && Eyes[level] != null) return;
-        var cv = DrawBody(level);
-        Bodies[level] = MakeSprite(cv, Size, Span);
-        var eye = DrawEye(level);
-        Eyes[level] = MakeSprite(eye, 64, 1f);
-        foreach (float sx in new[] { -0.2f, 0.2f }) cv.Overlay(eye, sx, 0.04f, 0.19f);
-        Icons[level] = MakeSprite(cv, Size, Span);
+        if (Bodies[style, level] != null && Icons[style, level] != null && Eyes[style, level] != null) return;
+        var st = Cosmetics.Cats[style];
+        bool pixel = st.Pixels > 0;
+        var cv = DrawBody(level, st, pixel ? st.Pixels * PixelScale : Size);
+        var eye = DrawEye(level, st);
+        Bodies[style, level] = pixel ? MakeSprite(cv.Pixelate(st.Pixels), st.Pixels, Span, true) : MakeSprite(cv, Size, Span);
+        Eyes[style, level] = pixel ? MakeSprite(eye.Pixelate(16), 16, 1f, true) : MakeSprite(eye, 64, 1f);
+        foreach (float sx in new[] { -st.EyeX, st.EyeX }) cv.Overlay(eye, sx, st.EyeY, EyeWorld * st.EyeScale);
+        Icons[style, level] = pixel ? MakeSprite(cv.Pixelate(st.Pixels), st.Pixels, Span, true) : MakeSprite(cv, Size, Span);
     }
 
     /// <summary>Head with the eyes baked in, for UI (menu, next preview, chain). In the game the eyes are separate so they can blink.</summary>
-    public static Sprite Icon(int level)
+    public static Sprite Icon(int level) => Icon(level, Cosmetics.CatIndex(level));
+
+    public static Sprite Icon(int level, int style)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        Ensure(level);
-        return Icons[level];
+        Ensure(level, style);
+        return Icons[style, level];
     }
 
     static Sprite _gear;
@@ -93,40 +112,62 @@ public static partial class CatSprites
     public static Sprite Eye(int level)
     {
         level = Mathf.Clamp(level, 0, CatDatabase.MaxLevel);
-        Ensure(level);
-        return Eyes[level];
+        int style = Cosmetics.CatIndex(level);
+        Ensure(level, style);
+        return Eyes[style, level];
     }
 
     // ------------------------------------------------------------------ drawing
 
-    static Canvas DrawBody(int level)
+    static Canvas DrawBody(int level, CatStyle st, int px)
     {
         var cat = Cats[level];
-        Color coat = CatDatabase.Colors[level];
-        Color line = Color.Lerp(coat, new Color(0.15f, 0.1f, 0.12f), 0.6f);
+        Color Tone(Color c) => st.Coat != null ? st.Coat(c, level) : c;      // the style's version of a colour
+        Color coat = Tone(CatDatabase.Colors[level]);
+        var pat = st.Pat ?? cat.Pat;
+        Color line = st.LineColor ?? Color.Lerp(coat, new Color(0.15f, 0.1f, 0.12f), st.LineMix);
         Color dark = Color.Lerp(coat, Color.black, 0.3f);
         Color pink = new Color(1f, 0.72f, 0.8f);
-        var cv = new Canvas(Size, Span, line);
+        var cv = new Canvas(px, Span, line);
 
         var body = Circle(0, 0, 0.5f);
         var earL = new[] { new Vector2(-0.47f, 0.12f), new Vector2(-0.12f, 0.47f), new Vector2(-0.38f, 0.58f) };
         var earR = new[] { new Vector2(0.47f, 0.12f), new Vector2(0.12f, 0.47f), new Vector2(0.38f, 0.58f) };
 
         Color earColL = coat, earColR = coat;
-        if (cat.Pat == Pattern.Calico) { earColL = Hex("F2A154"); earColR = Hex("3B3B46"); }
-        if (cat.Pat == Pattern.Siamese) earColL = earColR = Hex("6B4A3A");
+        if (pat == Pattern.Calico) { earColL = Tone(Hex("F2A154")); earColR = Tone(Hex("3B3B46")); }
+        if (pat == Pattern.Siamese) earColL = earColR = Tone(Hex("6B4A3A"));
+
+        // ears: pointy triangles, or round bear ears
+        Shape sEarL, sEarR, sInL, sInR;
+        if (st.Ears == EarShape.Round)
+        {
+            sEarL = Circle(-0.34f, 0.36f, 0.19f); sEarR = Circle(0.34f, 0.36f, 0.19f);
+            sInL = Circle(-0.34f, 0.36f, 0.11f); sInR = Circle(0.34f, 0.36f, 0.11f);
+        }
+        else
+        {
+            sEarL = Tri(earL); sEarR = Tri(earR);
+            sInL = Tri(Shrink(earL, 0.5f)); sInR = Tri(Shrink(earR, 0.5f));
+        }
 
         // outline, ears, inner ears, head
-        cv.Paint(Grow(Union(body, Tri(earL), Tri(earR)), 0.016f), line);
-        cv.Paint(Tri(earL), earColL);
-        cv.Paint(Tri(earR), earColR);
-        cv.Paint(Tri(Shrink(earL, 0.5f)), pink);
-        cv.Paint(Tri(Shrink(earR, 0.5f)), pink);
+        cv.Paint(Grow(Union(body, sEarL, sEarR), st.Outline), line);
+        cv.Paint(sEarL, earColL);
+        cv.Paint(sEarR, earColR);
+        cv.Paint(sInL, pink);
+        cv.Paint(sInR, pink);
         cv.Paint(body, coat);
 
         // coat pattern (clipped to the head)
-        switch (cat.Pat)
+        switch (pat)
         {
+            case Pattern.Dots:
+                Color dot = Color.Lerp(coat, Color.white, 0.6f);
+                foreach (var d in new[] { new Vector3(-0.22f, 0.26f, 0.05f), new Vector3(0.06f, 0.35f, 0.04f), new Vector3(0.26f, 0.14f, 0.05f),
+                                          new Vector3(-0.34f, -0.04f, 0.04f), new Vector3(0.36f, -0.22f, 0.04f), new Vector3(-0.14f, -0.32f, 0.05f), new Vector3(0.12f, -0.38f, 0.035f) })
+                    cv.Paint(Circle(d.x, d.y, d.z), dot, body);
+                break;
             case Pattern.Tabby:
                 foreach (var s in new[] { Cap(0, 0.5f, 0, 0.33f, 0.02f), Cap(-0.11f, 0.49f, -0.08f, 0.36f, 0.018f), Cap(0.11f, 0.49f, 0.08f, 0.36f, 0.018f),
                                           Cap(-0.5f, 0.02f, -0.36f, 0.04f, 0.017f), Cap(-0.5f, -0.06f, -0.37f, -0.04f, 0.017f),
@@ -134,32 +175,70 @@ public static partial class CatSprites
                     cv.Paint(s, dark, body);
                 break;
             case Pattern.Calico:
-                cv.Paint(Circle(-0.3f, 0.3f, 0.22f), Hex("F2A154"), body);
-                cv.Paint(Circle(0.32f, 0.22f, 0.2f), Hex("3B3B46"), body);
-                cv.Paint(Circle(0.22f, -0.38f, 0.14f), Hex("F2A154"), body);
+                cv.Paint(Circle(-0.3f, 0.3f, 0.22f), Tone(Hex("F2A154")), body);
+                cv.Paint(Circle(0.32f, 0.22f, 0.2f), Tone(Hex("3B3B46")), body);
+                cv.Paint(Circle(0.22f, -0.38f, 0.14f), Tone(Hex("F2A154")), body);
                 break;
             case Pattern.Siamese:
-                cv.Paint(Ellipse(0, -0.08f, 0.27f, 0.22f), new Color(0.42f, 0.29f, 0.23f, 0.9f), body);
+                cv.Paint(Ellipse(0, -0.08f, 0.27f, 0.22f), Tone(new Color(0.42f, 0.29f, 0.23f, 0.9f)), body);
                 break;
             case Pattern.Tuxedo:
-                cv.Paint(Ellipse(0, -0.22f, 0.31f, 0.2f), Color.white, body);
-                cv.Paint(Cap(0, 0.5f, 0, 0.2f, 0.05f), Color.white, body);
+                cv.Paint(Ellipse(0, -0.22f, 0.31f, 0.2f), Tone(Color.white), body);
+                cv.Paint(Cap(0, 0.5f, 0, 0.2f, 0.05f), Tone(Color.white), body);
                 break;
         }
 
+        // shine and sparkles of the fancy styles
+        if (st.Gloss)
+        {
+            cv.Paint(Cap(-0.3f, 0.2f, -0.12f, 0.37f, 0.045f), new Color(1f, 1f, 1f, 0.45f), body);
+            cv.Paint(Circle(-0.37f, 0.1f, 0.022f), new Color(1f, 1f, 1f, 0.45f), body);
+        }
+        if (st.Sparkle)
+        {
+            cv.Paint(Star(0.3f, 0.27f, 0.07f), new Color(1f, 1f, 1f, 0.95f), body);
+            cv.Paint(Star(-0.33f, -0.27f, 0.05f), new Color(1f, 1f, 1f, 0.9f), body);
+        }
+
         // face: cheeks, nose, mouth, whiskers
-        cv.Paint(Ellipse(-0.3f, -0.07f, 0.07f, 0.045f), new Color(1f, 0.55f, 0.65f, 0.4f), body);
-        cv.Paint(Ellipse(0.3f, -0.07f, 0.07f, 0.045f), new Color(1f, 0.55f, 0.65f, 0.4f), body);
-        cv.Paint(Tri(new Vector2(-0.04f, -0.05f), new Vector2(0.04f, -0.05f), new Vector2(0, -0.095f)), new Color(1f, 0.5f, 0.6f));
+        if (st.Cheek > 0f)
+        {
+            float cw = 0.07f + st.Cheek * 0.03f, ch = 0.045f + st.Cheek * 0.02f;
+            cv.Paint(Ellipse(-0.3f, -0.07f, cw, ch), new Color(1f, 0.55f, 0.65f, st.Cheek), body);
+            cv.Paint(Ellipse(0.3f, -0.07f, cw, ch), new Color(1f, 0.55f, 0.65f, st.Cheek), body);
+        }
         Color mouth = new Color(0.35f, 0.2f, 0.25f);
-        cv.Paint(Cap(0, -0.095f, 0, -0.13f, 0.008f), mouth);
-        cv.Paint(Cap(0, -0.13f, -0.055f, -0.16f, 0.008f), mouth);
-        cv.Paint(Cap(0, -0.13f, 0.055f, -0.16f, 0.008f), mouth);
+        if (st.TinyFace)
+        {
+            // little round nose and a "w" mouth
+            cv.Paint(Ellipse(0, -0.075f, 0.03f, 0.022f), new Color(1f, 0.5f, 0.6f));
+            foreach (var seg in new[] { new Vector4(-0.06f, -0.105f, -0.03f, -0.13f), new Vector4(-0.03f, -0.13f, 0f, -0.105f),
+                                        new Vector4(0f, -0.105f, 0.03f, -0.13f), new Vector4(0.03f, -0.13f, 0.06f, -0.105f) })
+                cv.Paint(Cap(seg.x, seg.y, seg.z, seg.w, 0.008f), mouth);
+        }
+        else
+        {
+            cv.Paint(Tri(new Vector2(-0.04f, -0.05f), new Vector2(0.04f, -0.05f), new Vector2(0, -0.095f)), new Color(1f, 0.5f, 0.6f));
+            cv.Paint(Cap(0, -0.095f, 0, -0.13f, 0.008f), mouth);
+            cv.Paint(Cap(0, -0.13f, -0.055f, -0.16f, 0.008f), mouth);
+            cv.Paint(Cap(0, -0.13f, 0.055f, -0.16f, 0.008f), mouth);
+        }
+        if (st.Fangs)
+            foreach (float fx in new[] { -0.045f, 0.045f })
+                Outlined(cv, Tri(new Vector2(fx - 0.022f, -0.125f), new Vector2(fx + 0.022f, -0.125f), new Vector2(fx, -0.19f)), Color.white, mouth);
+        if (st.Gem)
+        {
+            Color ruby = Hex("E8334A");
+            Outlined(cv, Union(Tri(new Vector2(-0.055f, 0.33f), new Vector2(0.055f, 0.33f), new Vector2(0, 0.4f)),
+                               Tri(new Vector2(-0.055f, 0.33f), new Vector2(0.055f, 0.33f), new Vector2(0, 0.25f))), ruby, Hex("8E1F30"));
+            cv.Paint(Tri(new Vector2(-0.03f, 0.33f), new Vector2(0.0f, 0.33f), new Vector2(-0.015f, 0.37f)), new Color(1f, 1f, 1f, 0.7f));
+        }
 
         float lum = coat.r * 0.3f + coat.g * 0.59f + coat.b * 0.11f;
         Color whisk = lum < 0.4f ? new Color(0.92f, 0.92f, 0.95f, 0.9f) : new Color(0.3f, 0.26f, 0.3f, 0.85f);
         foreach (float sx in new[] { -1f, 1f })
         {
+            if (!st.Whiskers) break;
             cv.Paint(Cap(sx * 0.24f, -0.08f, sx * 0.47f, -0.03f, 0.006f), whisk, body);
             cv.Paint(Cap(sx * 0.24f, -0.11f, sx * 0.48f, -0.11f, 0.006f), whisk, body);
             cv.Paint(Cap(sx * 0.24f, -0.14f, sx * 0.47f, -0.19f, 0.006f), whisk, body);
@@ -193,15 +272,42 @@ public static partial class CatSprites
         return cv;
     }
 
-    static Canvas DrawEye(int level)
+    /// <summary>One eye (the game draws two and squashes them to blink). The look depends on the theme.</summary>
+    static Canvas DrawEye(int level, CatStyle st)
     {
-        Color iris = Cats[level].Eye;
-        var cv = new Canvas(64, 1f, new Color(0.1f, 0.08f, 0.12f));
-        cv.Paint(Circle(0, 0, 0.5f), new Color(0.1f, 0.08f, 0.12f));
-        cv.Paint(Circle(0, 0, 0.43f), iris);
-        cv.Paint(Ellipse(0, -0.02f, 0.13f, 0.3f), new Color(0.05f, 0.04f, 0.07f));
-        cv.Paint(Circle(-0.14f, 0.17f, 0.12f), Color.white);
-        cv.Paint(Circle(0.12f, -0.15f, 0.05f), new Color(1, 1, 1, 0.8f));
+        Color iris = st.Eye != null ? st.Eye(level) : Cats[level].Eye;
+        Color ink = new Color(0.1f, 0.08f, 0.12f);
+        var cv = new Canvas(64, 1f, ink);
+        switch (st.EyeKind)
+        {
+            case EyeShape.Dot:       // plain black oval with a shine
+                cv.Paint(Ellipse(0, 0, 0.36f, 0.5f), ink);
+                cv.Paint(Circle(-0.1f, 0.17f, 0.13f), Color.white);
+                cv.Paint(Circle(0.1f, -0.16f, 0.05f), new Color(1, 1, 1, 0.8f));
+                break;
+            case EyeShape.Happy:     // closed, smiling arc  ^
+                for (int i = 0; i < 8; i++)
+                {
+                    float a0 = Mathf.Deg2Rad * (30f + i * 15f), a1 = Mathf.Deg2Rad * (30f + (i + 1) * 15f);
+                    cv.Paint(Cap(Mathf.Cos(a0) * 0.36f, -0.14f + Mathf.Sin(a0) * 0.36f, Mathf.Cos(a1) * 0.36f, -0.14f + Mathf.Sin(a1) * 0.36f, 0.075f), ink);
+                }
+                break;
+            case EyeShape.Sparkle:   // big glossy eye with two highlights
+                cv.Paint(Circle(0, 0, 0.5f), ink);
+                cv.Paint(Circle(0, 0, 0.45f), iris);
+                cv.Paint(Circle(0, -0.14f, 0.3f), Color.Lerp(iris, Color.white, 0.4f), Circle(0, 0, 0.45f));
+                cv.Paint(Ellipse(0, 0.02f, 0.2f, 0.27f), new Color(0.05f, 0.04f, 0.07f));
+                cv.Paint(Circle(-0.15f, 0.2f, 0.16f), Color.white);
+                cv.Paint(Circle(0.14f, -0.16f, 0.09f), new Color(1, 1, 1, 0.9f));
+                break;
+            default:                 // cat eye with a slit pupil
+                cv.Paint(Circle(0, 0, 0.5f), ink);
+                cv.Paint(Circle(0, 0, 0.43f), iris);
+                cv.Paint(Ellipse(0, -0.02f, 0.13f, 0.3f), new Color(0.05f, 0.04f, 0.07f));
+                cv.Paint(Circle(-0.14f, 0.17f, 0.12f), Color.white);
+                cv.Paint(Circle(0.12f, -0.15f, 0.05f), new Color(1, 1, 1, 0.8f));
+                break;
+        }
         return cv;
     }
 
@@ -346,6 +452,26 @@ public static partial class CatSprites
             }
         }
 
+        /// <summary>Reduce to an n x n grid of solid pixels (the "pixel art" look). N must be a multiple of n.</summary>
+        public Canvas Pixelate(int n)
+        {
+            var dst = new Canvas(n, Span, Color.black);
+            int f = N / n;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float r = 0, g = 0, b = 0, a = 0;
+                for (int dy = 0; dy < f; dy++)
+                for (int dx = 0; dx < f; dx++)
+                {
+                    var c = Px[(y * f + dy) * N + x * f + dx];
+                    r += c.r * c.a; g += c.g * c.a; b += c.b * c.a; a += c.a;
+                }
+                if (a >= f * f * 0.5f) dst.Px[y * n + x] = new Color(r / a, g / a, b / a, 1f);   // mostly covered: a solid pixel
+            }
+            return dst;
+        }
+
         static void Blend(ref Color d, Color c, float a)
         {
             float oa = a + d.a * (1f - a);
@@ -383,11 +509,16 @@ public static partial class CatSprites
         }
     }
 
-    static Sprite MakeSprite(Canvas cv, int size, float span)
+    /// <param name="pixelArt">point filtering and no mipmaps, so the pixels stay sharp</param>
+    static Sprite MakeSprite(Canvas cv, int size, float span, bool pixelArt = false)
     {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true) { filterMode = FilterMode.Trilinear, wrapMode = TextureWrapMode.Clamp };
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, !pixelArt)
+        {
+            filterMode = pixelArt ? FilterMode.Point : FilterMode.Trilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
         tex.SetPixels(cv.Px);
-        tex.Apply(true);
+        tex.Apply(!pixelArt);
         return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size / span);
     }
 

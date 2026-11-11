@@ -35,6 +35,12 @@ public class MenuController : MonoBehaviour
     RectTransform _loadingCat;
     SettingsPopup _popup;
     CodexScreen _codex;
+    GachaPage _gacha;
+    SkinPage _skin;
+    Image[] _bobImages;
+    Text _homeCoins;
+    int _shownCoins = -1;
+    readonly int[] _bobLevels = { 0, 3, 10, 4, 8 };
 
     /// <summary>Built the first time it is opened (11 cat icons are not needed to show Home). Sits above the tab bar, below the popup.</summary>
     CodexScreen Codex
@@ -97,9 +103,13 @@ public class MenuController : MonoBehaviour
         // pages first, then the tab bar on top of them, then popup, then the loading screen over everything
         BuildHomePage();
         _soonCats = new RectTransform[4];
-        for (int i = 0; i < 4; i++) if (i != HomeTab) BuildSoonPage(i);
+        BuildGachaPage();
+        BuildSkinPage();
+        BuildSoonPage(3);
         BuildTabBar();
         _popup = SettingsPopup.Create(_root, false);
+        _gacha.Overlay.transform.SetSiblingIndex(_popup.Root.transform.GetSiblingIndex());   // the gacha opening covers the tab bar, below the popup
+        Cosmetics.Changed += RefreshHomeCats;
         BuildLoadingPanel();
         _loadingPanel.SetActive(false);
         SelectTab(HomeTab, silent: true);
@@ -120,14 +130,14 @@ public class MenuController : MonoBehaviour
         Loc.Bind(sub, () => Loc.T("subtitle"));
 
         // a row of cats that bob up and down (levels sampled across the range)
-        int[] levels = { 0, 3, 10, 4, 8 };
         float[] sizes = { 190, 230, 300, 230, 190 };
         float[] xs = { -400, -200, 0, 200, 400 };
-        _bobbers = new RectTransform[levels.Length];
-        for (int i = 0; i < levels.Length; i++)
+        _bobbers = new RectTransform[_bobLevels.Length];
+        _bobImages = new Image[_bobLevels.Length];
+        for (int i = 0; i < _bobLevels.Length; i++)
         {
-            var img = GameUI.Img(p, "Cat" + i, CatSprites.Icon(levels[i]), Color.white, Center, new Vector2(xs[i], 110), new Vector2(sizes[i], sizes[i]));
-            _bobbers[i] = img.rectTransform;
+            _bobImages[i] = GameUI.Img(p, "Cat" + i, CatSprites.Icon(_bobLevels[i]), Color.white, Center, new Vector2(xs[i], 110), new Vector2(sizes[i], sizes[i]));
+            _bobbers[i] = _bobImages[i].rectTransform;
         }
 
         var green = new Color(0.2f, 0.65f, 0.4f);
@@ -165,13 +175,41 @@ public class MenuController : MonoBehaviour
         Loc.Bind(codexBtn, () => Loc.T("codex") + "   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1));
 
         // coins (top-left) and the only settings entry: a gear icon in the top-right corner
-        GameUI.CoinChip(p, new Vector2(0, 1), new Vector2(169, -95), out _);
+        _homeCoins = GameUI.CoinChip(p, new Vector2(0, 1), new Vector2(169, -95), out _);
         var gear = GameUI.Button(p, "SettingsButton", "", 30, new Vector2(1, 1), new Vector2(-95, -95), new Vector2(110, 110), Brown);
         GameUI.Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, Center, Vector2.zero, new Vector2(78, 78));
         gear.onClick.AddListener(() => { AudioManager.Instance.Click(); _popup.Open(); });
     }
 
-    // ------------------------------------------------------------------ "coming soon" pages (gacha, skin, shop)
+    /// <summary>The cats on Home wear whatever was just equipped in the Skin tab.</summary>
+    void RefreshHomeCats()
+    {
+        if (_bobImages == null) return;
+        for (int i = 0; i < _bobImages.Length; i++)
+            if (_bobImages[i] != null) _bobImages[i].sprite = CatSprites.Icon(_bobLevels[i]);
+    }
+
+    void OnDestroy() => Cosmetics.Changed -= RefreshHomeCats;
+
+    // ------------------------------------------------------------------ gacha and skin pages
+
+    void BuildGachaPage()
+    {
+        _pages[0] = Panel("PageGacha", Color.clear);
+        _gacha = _pages[0].AddComponent<GachaPage>();
+        _gacha.Build((RectTransform)_pages[0].transform, _root);
+        _pages[0].SetActive(false);
+    }
+
+    void BuildSkinPage()
+    {
+        _pages[2] = Panel("PageSkin", Color.clear);
+        _skin = _pages[2].AddComponent<SkinPage>();
+        _skin.Build((RectTransform)_pages[2].transform);
+        _pages[2].SetActive(false);
+    }
+
+    // ------------------------------------------------------------------ "coming soon" page (shop)
 
     void BuildSoonPage(int tab)
     {
@@ -255,6 +293,8 @@ public class MenuController : MonoBehaviour
             _tabIcons[i].color = on ? Color.white : Brown;
             _tabLabels[i].color = on ? Color.white : Brown;
         }
+        if (tab == 0 && _gacha != null) _gacha.Refresh();
+        if (tab == 2 && _skin != null) _skin.Refresh();
     }
 
     // ------------------------------------------------------------------ loading screen
@@ -285,6 +325,7 @@ public class MenuController : MonoBehaviour
         Haptics.Light();
         _popup.Close();
         if (_codex != null) _codex.Close();
+        _loadingCat.GetComponent<Image>().sprite = CatSprites.Icon(4);     // in the cat style the player chose
         _loadingPanel.SetActive(true);
         StartCoroutine(LoadGame());
     }
@@ -325,6 +366,9 @@ public class MenuController : MonoBehaviour
     {
         float t = Time.unscaledTime;
 
+        if (_shownCoins != PlayerData.Coins) { _shownCoins = PlayerData.Coins; _homeCoins.text = _shownCoins.ToString(); }   // after a gacha pull or a cheat
+        if (_codex != null) _codex.Tick();
+
         if (_bobbers != null && _pages[HomeTab].activeSelf)
             for (int i = 0; i < _bobbers.Length; i++)
             {
@@ -358,7 +402,9 @@ public class MenuController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape) && !_loading)   // Android back button
         {
-            if (_codex != null && _codex.IsOpen) _codex.Close();
+            if (_popup.IsOpen) _popup.Close();
+            else if (_gacha.OnBack()) { }
+            else if (_codex != null && _codex.IsOpen) _codex.Close();
             else _popup.Toggle();
         }
     }
