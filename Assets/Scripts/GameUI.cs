@@ -12,6 +12,9 @@ public class GameUI : MonoBehaviour
     Button _sndBtn, _hapBtn;
     float _pop;
     int _lastScore;
+    Text _debug;
+    float _fps = 60f, _worst, _dbgT;
+    string _lastError = "-";
 
     public void Build(GameManager gm)
     {
@@ -86,6 +89,18 @@ public class GameUI : MonoBehaviour
         var again = Button(go, "Again", "PLAY AGAIN", 60, new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(520, 130), new Color(0.2f, 0.65f, 0.4f));
         again.onClick.AddListener(() => { AudioManager.Instance.Click(); _gm.NewGame(); });
         _gameOver.SetActive(false);
+
+        // Open the page with ?debug (or #debug) to show FPS / fruit count / last error on screen.
+        if (Application.absoluteURL != null && Application.absoluteURL.Contains("debug"))
+        {
+            _debug = Label(root, "Debug", "", 28, TextAnchor.UpperLeft, new Vector2(0, 1), new Vector2(40, -330), new Vector2(900, 200));
+            _debug.color = new Color(0.8f, 0.1f, 0.1f);
+            Application.logMessageReceived += (msg, stack, type) =>
+            {
+                if (type == LogType.Error || type == LogType.Exception || type == LogType.Assert)
+                    _lastError = msg.Length > 120 ? msg.Substring(0, 120) : msg;
+            };
+        }
     }
 
     void RefreshToggles()
@@ -102,6 +117,21 @@ public class GameUI : MonoBehaviour
 
     void Update()
     {
+        if (_debug != null)
+        {
+            float dt = Time.unscaledDeltaTime;
+            _fps = Mathf.Lerp(_fps, 1f / Mathf.Max(dt, 0.0001f), 0.05f);
+            _worst = Mathf.Max(_worst, dt);
+            _dbgT += dt;
+            if (_dbgT >= 0.5f)
+            {
+                _dbgT = 0f;
+                _debug.text = $"fps {_fps:F0}  worst {_worst * 1000f:F0}ms  fruits {_gm.FruitCount}\n" +
+                              $"mem {System.GC.GetTotalMemory(false) / 1048576f:F1}MB  err: {_lastError}";
+                if (_fps > 30f) _worst = 0f;     // keep the worst frame visible while the game is slow
+            }
+        }
+
         // score "bump" when it increases
         if (_pop > 0f)
         {

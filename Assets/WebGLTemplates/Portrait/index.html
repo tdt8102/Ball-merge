@@ -14,6 +14,8 @@
       background: #faeed6;
       display: block;
     }
+    #fatal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+             padding: 24px; background: rgba(29,22,18,.92); color: #fff; font: 600 18px sans-serif; }
     #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
                flex-direction: column; color: #4a3a30; font: 600 18px sans-serif; }
     #bar { width: 200px; height: 8px; background: #e2d3b8; border-radius: 4px; margin-top: 12px; overflow: hidden; }
@@ -22,7 +24,18 @@
 </head>
 <body>
   <canvas id="unity-canvas" tabindex="-1"></canvas>
+  <div id="fatal" style="display:none"></div>
   <div id="loading">Loading...<div id="bar"><div id="fill"></div></div></div>
+  <script>
+    // If the browser drops the GPU context (low memory, app switch) the game cannot recover by itself.
+    document.getElementById("unity-canvas").addEventListener("webglcontextlost", function (e) {
+      e.preventDefault();
+      var f = document.getElementById("fatal");
+      f.textContent = "Graphics connection lost. Tap to reload.";
+      f.style.display = "flex";
+      f.onclick = function () { location.reload(); };
+    });
+  </script>
   <script src="Build/{{{ LOADER_FILENAME }}}"></script>
   <script>
     createUnityInstance(document.querySelector("#unity-canvas"), {
@@ -33,6 +46,8 @@
       companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
       productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
       productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+      // phones report devicePixelRatio 3+: cap it to keep GPU memory / fill-rate under control
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     }, function (p) { document.getElementById("fill").style.width = (p * 100) + "%"; })
     .then(function () { document.getElementById("loading").style.display = "none"; })
     .catch(function (m) { document.getElementById("loading").textContent = "Error: " + m; });

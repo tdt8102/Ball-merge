@@ -29,6 +29,7 @@ public class GameManager : MonoBehaviour
     public int Best { get; private set; }
     public int NextLevel { get; private set; }
     public bool IsGameOver { get; private set; }
+    public int FruitCount => _fruits.Count;
 
     GameUI _ui;
     PhysicsMaterial2D _mat;
@@ -44,7 +45,10 @@ public class GameManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        Application.targetFrameRate = 60;
+#if !UNITY_WEBGL
+        Application.targetFrameRate = 60;   // WebGL: keep the default (requestAnimationFrame); a fixed target makes it use setTimeout and stutter on phones
+#endif
+        Time.maximumDeltaTime = 0.06f;      // slow frames slow the game down instead of piling up physics steps
         Physics2D.gravity = new Vector2(0f, -20f);
         Best = PlayerPrefs.GetInt("best", 0);
 
@@ -181,18 +185,30 @@ public class GameManager : MonoBehaviour
 
     void HandleInput()
     {
-        if (_held == null) { _aimLine.enabled = false; return; }
-        _aimLine.enabled = true;
-
-        if (Input.GetMouseButtonDown(0) && !PointerOverUI()) _aiming = true;
+        // Track the press even while no fruit is held (cooldown). Otherwise a finger that is already
+        // down when the next fruit appears is ignored until the player lifts and taps again.
+        bool up = Input.GetMouseButtonUp(0);
+        if (Input.GetMouseButtonDown(0))
+        {
+            _aiming = !PointerOverUI();
+            if (_aiming) _aimX = PointerWorldX();
+        }
         if (_aiming && Input.GetMouseButton(0)) _aimX = PointerWorldX();
+
+        if (_held == null)
+        {
+            _aimLine.enabled = false;
+            if (up || !Input.GetMouseButton(0)) _aiming = false;   // released during cooldown: nothing to drop
+            return;
+        }
+        _aimLine.enabled = true;
 
         float limit = HalfWidth - _held.Radius;
         _aimX = Mathf.Clamp(_aimX, -limit, limit);
         _held.transform.position = new Vector3(_aimX, SpawnY, 0);
         _aimLine.transform.position = new Vector3(_aimX, (SpawnY + FloorY) * 0.5f, 0);
 
-        if (_aiming && Input.GetMouseButtonUp(0))
+        if (_aiming && up)
         {
             _aiming = false;
             _held.Release();
@@ -200,6 +216,7 @@ public class GameManager : MonoBehaviour
             _held = null;
             _cooldown = DropCooldown;
         }
+        else if (_aiming && !Input.GetMouseButton(0)) _aiming = false;   // touch was cancelled (no release event)
     }
 
     static bool PointerOverUI()
