@@ -96,17 +96,17 @@ public class GameManager : MonoBehaviour
         Color wallCol = new Color(0.55f, 0.36f, 0.24f);
         float wallH = 20f;
 
-        // visible frame: one rounded rectangle behind the cream panel (so only the outer corners are round);
-        // the colliders below are plain boxes along its inner edge
-        var frame = new GameObject("Frame");
-        frame.transform.SetParent(root, false);
-        frame.transform.position = new Vector3(0, (WallTopY + FloorY - WallThickness) * 0.5f, 0);
-        var fr = frame.AddComponent<SpriteRenderer>();
-        fr.sprite = SpriteFactory.RoundedRect;
-        fr.drawMode = SpriteDrawMode.Sliced;
-        fr.size = new Vector2(HalfWidth * 2 + WallThickness * 2, WallTopY - FloorY + WallThickness);
-        fr.color = wallCol;
-        fr.sortingOrder = -11;
+        // visible frame: thin tray with round wall tops and a softly rounded outer bottom corner.
+        // The colliders below are thicker invisible boxes along the same inner edge, so physics is unchanged.
+        const float t = 0.22f;
+        float xc = HalfWidth + t * 0.5f, topC = WallTopY - t * 0.5f, botC = FloorY - t * 0.5f;
+        foreach (float s in new[] { -1f, 1f })
+        {
+            Quad(root, "WallVisual", new Vector2(s * xc, (topC + botC) * 0.5f), new Vector2(t, topC - botC), wallCol, 5);
+            Disc(root, new Vector2(s * xc, topC), t, wallCol, 5);     // round top
+            Disc(root, new Vector2(s * xc, botC), t, wallCol, 5);     // round outer bottom corner
+        }
+        Quad(root, "FloorVisual", new Vector2(0, botC), new Vector2(xc * 2f, t), wallCol, 5);
 
         // left / right / floor (colliders only)
         Wall(root, "WallL", new Vector2(-HalfWidth - WallThickness * 0.5f, FloorY + wallH * 0.5f - WallThickness), new Vector2(WallThickness, wallH));
@@ -132,6 +132,18 @@ public class GameManager : MonoBehaviour
         sr.color = color;
         sr.sortingOrder = order;
         return sr;
+    }
+
+    static void Disc(Transform parent, Vector2 pos, float diameter, Color color, int order)
+    {
+        var go = new GameObject("Cap");
+        go.transform.SetParent(parent, false);
+        go.transform.position = pos;
+        go.transform.localScale = Vector3.one * diameter;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = SpriteFactory.Disc;
+        sr.color = color;
+        sr.sortingOrder = order;
     }
 
     void Wall(Transform parent, string name, Vector2 pos, Vector2 size)
