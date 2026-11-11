@@ -26,7 +26,9 @@ public static class WebGLBuilder
         // No compression so it can be hosted on GitHub Pages / any static host as-is.
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
         PlayerSettings.WebGL.decompressionFallback = false;
-        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
+        // NOT None: with None any C# exception (even a harmless one) calls abort() and the whole game dies.
+        // This way an unexpected exception is logged and the game keeps running.
+        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         PlayerSettings.WebGL.nameFilesAsHashes = true;
 
         // hashed file names: wipe old output so stale builds do not pile up in git
