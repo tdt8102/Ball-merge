@@ -8,7 +8,7 @@ public class Cat : MonoBehaviour
     public bool Merging { get; set; }
     public bool Dropped { get; private set; }
     public float Age { get; private set; }          // seconds since released
-    public Rigidbody2D Body { get; private set; }
+    public Rigidbody Body { get; private set; }
 
     public bool Worried { get; set; }               // set by GameManager when the stack is too high
 
@@ -32,12 +32,17 @@ public class Cat : MonoBehaviour
     /// <summary>Put a saved cat back exactly as it was (no pop-in, already past the danger-line grace time).</summary>
     public void Restore(float angle, Vector2 velocity, float angularVelocity)
     {
-        transform.rotation = Quaternion.Euler(0f, 0f, angle);
+        var q = Quaternion.Euler(0f, 0f, angle);
+        transform.rotation = q;
+        Body.rotation = q;                      // the physics body must be turned too, or it snaps back to upright
         Velocity = velocity;
-        Body.angularVelocity = angularVelocity;
+        Body.angularVelocity = new Vector3(0f, 0f, angularVelocity * Mathf.Deg2Rad);
         Age = 5f;
         _popT = 1f;
     }
+
+    /// <summary>Spin in degrees per second (the board is flat: only rotation around Z).</summary>
+    public float AngularVelocity => Body.angularVelocity.z * Mathf.Rad2Deg;
 
     public float Speed
     {
@@ -51,7 +56,7 @@ public class Cat : MonoBehaviour
         }
     }
 
-    public static Cat Create(int level, Vector2 pos, PhysicsMaterial2D mat, bool preview)
+    public static Cat Create(int level, Vector2 pos, PhysicMaterial mat, bool preview)
     {
         var go = new GameObject("Cat_" + level);
         go.transform.position = pos;
@@ -60,7 +65,9 @@ public class Cat : MonoBehaviour
         return f;
     }
 
-    void Init(int level, PhysicsMaterial2D mat, bool preview)
+    SphereCollider _col;
+
+    void Init(int level, PhysicMaterial mat, bool preview)
     {
         Level = level;
         Radius = CatDatabase.Radius[level];
@@ -74,8 +81,9 @@ public class Cat : MonoBehaviour
         sr.sortingOrder = 1;
         AddEyes(_visual, level);
 
-        // physics
-        Body = gameObject.AddComponent<Rigidbody2D>();
+        // physics: 3D PhysX with the Z axis and the X/Y spins frozen, so it behaves like a flat board.
+        // (Physics2D leaked native memory on WebGL whenever cats touched each other, until Safari killed the page.)
+        Body = gameObject.AddComponent<Rigidbody>();
         Body.mass = Mathf.PI * Radius * Radius;
 #if UNITY_6000_0_OR_NEWER
         Body.linearDamping = 0.05f;
@@ -84,13 +92,15 @@ public class Cat : MonoBehaviour
         Body.drag = 0.05f;
         Body.angularDrag = 0.4f;
 #endif
-        Body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        Body.interpolation = RigidbodyInterpolation2D.Interpolate;
-        var col = gameObject.AddComponent<CircleCollider2D>();
-        col.radius = Radius;
-        col.sharedMaterial = mat;
+        Body.maxAngularVelocity = 6.3f;                                   // 360 degrees per second, like before
+        Body.constraints = RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationY;
+        Body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        Body.interpolation = RigidbodyInterpolation.Interpolate;
+        _col = gameObject.AddComponent<SphereCollider>();
+        _col.radius = Radius;
+        _col.sharedMaterial = mat;
 
-        if (preview) Body.simulated = false;   // hovering at the dropper, no collisions yet
+        if (preview) { Body.isKinematic = true; _col.enabled = false; }   // hovering at the dropper, no collisions yet
         else { Dropped = true; _popT = 0f; }
     }
 
@@ -129,7 +139,8 @@ public class Cat : MonoBehaviour
     public void Release()
     {
         Dropped = true;
-        Body.simulated = true;
+        Body.isKinematic = false;
+        _col.enabled = true;
     }
 
     void Update()
@@ -146,16 +157,14 @@ public class Cat : MonoBehaviour
         }
     }
 
-    void OnCollisionEnter2D(Collision2D c)
+    void OnCollisionEnter(Collision c)
     {
         TryMerge(c);
         if (Dropped && !Merging) Impact(c);
     }
 
-    void OnCollisionStay2D(Collision2D c) => TryMerge(c);
-
     /// <summary>Knock sound + a little dust when landing hard.</summary>
-    void Impact(Collision2D c)
+    void Impact(Collision c)
     {
         float v = c.relativeVelocity.magnitude;
         if (v < 2.2f || Time.time - _lastImpact < 0.07f) return;
@@ -165,7 +174,7 @@ public class Cat : MonoBehaviour
             Fx.Instance.Burst(c.GetContact(0).point, new Color(0.85f, 0.78f, 0.68f), 3, 1.2f, 0.08f);
     }
 
-    void TryMerge(Collision2D c)
+    void TryMerge(Collision c)
     {
         if (Merging || !Dropped) return;
         var other = c.collider.GetComponent<Cat>();

@@ -34,7 +34,7 @@ public class GameManager : MonoBehaviour
     public int CatCount => _cats.Count;
 
     GameUI _ui;
-    PhysicsMaterial2D _mat;
+    PhysicMaterial _mat;
     readonly List<Cat> _cats = new List<Cat>();
     Cat _held;
     SpriteRenderer _aimLine, _dangerLine;
@@ -52,10 +52,16 @@ public class GameManager : MonoBehaviour
         Application.targetFrameRate = 60;   // WebGL: keep the default (requestAnimationFrame); a fixed target makes it use setTimeout and stutter on phones
 #endif
         Time.maximumDeltaTime = 0.06f;      // slow frames slow the game down instead of piling up physics steps
-        Physics2D.gravity = new Vector2(0f, -Balance.Current.gravity);
+        Physics.gravity = new Vector3(0f, -Balance.Current.gravity, 0f);
+        Physics.defaultSolverIterations = 12;              // cats are created after this, so they all get the better solver
+        Physics.defaultSolverVelocityIterations = 4;
         Best = PlayerData.Best;
 
-        _mat = new PhysicsMaterial2D("Cat") { friction = Balance.Current.friction, bounciness = Balance.Current.bounciness };
+        _mat = new PhysicMaterial("Cat")
+        {
+            dynamicFriction = Balance.Current.friction, staticFriction = Balance.Current.friction, bounciness = Balance.Current.bounciness,
+            frictionCombine = PhysicMaterialCombine.Average, bounceCombine = PhysicMaterialCombine.Average
+        };
 
         SetupCamera();
         new GameObject("Audio").AddComponent<AudioManager>();
@@ -193,8 +199,8 @@ public class GameManager : MonoBehaviour
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         go.transform.position = pos;
-        var box = go.AddComponent<BoxCollider2D>();
-        box.size = size;
+        var box = go.AddComponent<BoxCollider>();
+        box.size = new Vector3(size.x, size.y, 4f);          // deep enough that nothing can slip past in Z
         box.sharedMaterial = _mat;
     }
 
@@ -254,7 +260,7 @@ public class GameManager : MonoBehaviour
             if (c == null || !c.Dropped || c.Merging) continue;       // the cat in hand and cats about to merge are not part of the board
             var t = c.transform;
             var v = c.Velocity;
-            run.cats.Add(new CatState { l = c.Level, x = t.position.x, y = t.position.y, r = t.eulerAngles.z, vx = v.x, vy = v.y, w = c.Body.angularVelocity });
+            run.cats.Add(new CatState { l = c.Level, x = t.position.x, y = t.position.y, r = t.eulerAngles.z, vx = v.x, vy = v.y, w = c.AngularVelocity });
         }
         return run;
     }
@@ -315,6 +321,39 @@ public class GameManager : MonoBehaviour
 
         HandleInput();
         CheckDanger();
+        ScanMerges();
+    }
+
+    // Safety net: two same-level cats that touch are merged by this scan (10 times a second) in case the collision event
+    // (Cat.OnCollisionEnter) did not fire for them, e.g. a new cat that appears already touching its twin.
+    float _scanT;
+    readonly List<Cat> _mergeA = new List<Cat>(), _mergeB = new List<Cat>();
+
+    void ScanMerges()
+    {
+        _scanT -= Time.deltaTime;
+        if (_scanT > 0f) return;
+        _scanT = 0.1f;
+
+        _mergeA.Clear();
+        _mergeB.Clear();
+        for (int i = 0; i < _cats.Count; i++)
+        {
+            var a = _cats[i];
+            if (a == null || a.Merging || !a.Dropped) continue;
+            for (int j = i + 1; j < _cats.Count; j++)
+            {
+                var b = _cats[j];
+                if (b == null || b.Merging || !b.Dropped || b.Level != a.Level) continue;
+                float reach = a.Radius + b.Radius + 0.02f;
+                if (((Vector2)(a.transform.position - b.transform.position)).sqrMagnitude > reach * reach) continue;
+                _mergeA.Add(a);
+                _mergeB.Add(b);
+                break;
+            }
+        }
+        for (int k = 0; k < _mergeA.Count; k++)
+            if (!_mergeA[k].Merging && !_mergeB[k].Merging) Merge(_mergeA[k], _mergeB[k]);   // a cat can appear in two pairs: the second one is skipped
     }
 
     void HandleInput()
