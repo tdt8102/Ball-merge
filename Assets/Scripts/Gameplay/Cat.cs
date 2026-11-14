@@ -4,7 +4,19 @@ using UnityEngine;
 public class Cat : MonoBehaviour
 {
     public int Level { get; private set; }
+    /// <summary>The radius of this cat's level (CatDatabase / balance.json). The baseline: never changed, never read back from a shrunk state.</summary>
+    public float BaseRadius { get; private set; }
+
+    /// <summary>The radius in use now (collider, merge reach, red line): BaseRadius * Scale.</summary>
     public float Radius { get; private set; }
+
+    // Hug bookkeeping (who pulled this cat last, and until when its merges count as hug-driven); see HugEffect.
+    public Cat HugPartner { get; set; }
+    public float HugStamp { get; set; } = -100f;
+    public float HugChainUntil { get; set; } = -100f;
+
+    /// <summary>Size factor of an effect such as Shrink (1 = normal).</summary>
+    public float Scale { get; private set; } = 1f;
     public bool Merging { get; set; }
     public bool Dropped { get; private set; }
     public float Age { get; private set; }          // seconds since released
@@ -41,6 +53,29 @@ public class Cat : MonoBehaviour
         _popT = 1f;
     }
 
+    /// <summary>
+    /// Set the size factor (absolute, never multiplied onto the current size): visual scale and collider radius follow
+    /// BaseRadius * scale, so calling it again with the same value changes nothing and 1 restores the exact original.
+    /// Mass is NOT changed (it stays the mass of the full-size cat).
+    /// </summary>
+    public void SetScale(float scale)
+    {
+        Scale = scale;
+        Radius = BaseRadius * scale;
+        if (_col != null) _col.radius = Radius;
+        if (_visual != null && _popT >= 1f) _visual.localScale = Vector3.one * Radius * 2f;   // while popping in, Update scales by Radius itself
+    }
+
+    /// <summary>Take over rotation and speed from another cat (when a cat is replaced by its upgraded self).</summary>
+    public void CopyMotionFrom(Cat other)
+    {
+        var q = other.transform.rotation;
+        transform.rotation = q;
+        Body.rotation = q;
+        Velocity = other.Velocity;
+        Body.angularVelocity = other.Body.angularVelocity;
+    }
+
     /// <summary>Spin in degrees per second (the board is flat: only rotation around Z).</summary>
     public float AngularVelocity => Body.angularVelocity.z * Mathf.Rad2Deg;
 
@@ -70,7 +105,7 @@ public class Cat : MonoBehaviour
     void Init(int level, PhysicMaterial mat, bool preview)
     {
         Level = level;
-        Radius = CatDatabase.Radius[level];
+        Radius = BaseRadius = CatDatabase.Radius[level];
 
         // visual (circle sprite scaled to diameter)
         _visual = new GameObject("Visual").transform;

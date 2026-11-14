@@ -79,7 +79,12 @@ public struct PullResult
     public Item Item;
     public bool IsNew;
     public int Refund;                      // coins given back for a duplicate
+    public int Shards;                      // star shards given for a duplicate CAT (0 for a new item and for backgrounds/frames)
+    public int SetOwned, SetTotal;          // a CAT: how many cats of its theme the player owns right after this result (0/0 for others)
+    public ThemeSkillDef Completed;         // set only when this result completed the theme and newly unlocked its skill (announced once)
 }
+
+public enum ExchangeResult { Success, AlreadyOwned, NotEnoughShards, Failed }
 
 /// <summary>The catalogue of collectibles, what is equipped, and the gacha roll.</summary>
 public static class Cosmetics
@@ -392,18 +397,94 @@ public static class Cosmetics
             if (r == Rarity.Legendary) PlayerData.Pity = 0;
             if (r != Rarity.Common) gotRare = true;
 
-            var item = RandomOf(r);
-            bool isNew = PlayerData.Unlock(item.Id);
-            int refund = 0;
-            if (!isNew)
-            {
-                refund = DuplicateCoins(r);
-                PlayerData.AddCoins(refund);
-            }
-            results.Add(new PullResult { Item = item, IsNew = isNew, Refund = refund });
+            results.Add(Award(RandomOf(r), r));
         }
         PlayerData.Flush();
         return results;
+    }
+
+    /// <summary>
+    /// What one rolled item gives: a new item is unlocked; a duplicate gives its coin refund as before and, for a CAT only,
+    /// star shards (Balance.shardRewardPerDuplicateCat). New items and duplicate backgrounds/frames give no shard.
+    /// Public so the rule can be tested on exact items; Pull is the only caller in the game.
+    /// </summary>
+    public static PullResult Award(Item item, Rarity rolled)
+    {
+        var cat = item as CatItem;
+        var skill = cat == null ? null : ThemeSkills.Of(cat.Theme);
+        bool hadSkill = skill != null && SetCompletion.IsSkillUnlocked(skill);
+
+        bool isNew = PlayerData.Unlock(item.Id);
+        int refund = 0, shards = 0;
+        if (!isNew)
+        {
+            refund = DuplicateCoins(rolled);
+            PlayerData.AddCoins(refund);
+            if (item is CatItem)
+            {
+                shards = ThemeSkills.ShardRewardPerDuplicateCat;
+                PlayerData.AddShards(shards);
+            }
+        }
+
+        var result = new PullResult { Item = item, IsNew = isNew, Refund = refund, Shards = shards };
+        if (cat != null)
+        {
+            var progress = SetCompletion.Progress(cat.Theme);
+            result.SetOwned = progress.Owned;
+            result.SetTotal = progress.Total;
+            // the unlock flag flips in PlayerData.Unlock (Phase 2); "newly" = it was not set before this result, so it is announced once
+            if (skill != null && !hadSkill && SetCompletion.IsSkillUnlocked(skill)) result.Completed = skill;
+        }
+        return result;
+    }
+
+    // ------------------------------------------------------------------ star shard exchange
+
+    static bool _exchanging;
+
+    /// <summary>Shards needed for this cat: by rarity (Common 20, Rare 30, Legendary 40), the level-10 "Majesty" cat 50.</summary>
+    public static int ShardPrice(CatItem cat) => ThemeSkills.ShardPrice(cat);
+
+    /// <summary>
+    /// Buy one cat the player does not own, of any theme and rarity, with star shards. Safe against a double tap or a retry:
+    /// an owned cat is never charged, the shards are spent once, and if the cat could not be granted the shards are given
+    /// back (a cat is never granted without payment, nor paid for without being granted). Ownership goes through
+    /// PlayerData.Unlock, the same door as the gacha, so the set completion of Phase 2 is updated by the same call.
+    /// There is no backend: everything is local and synchronous, so there is no half-finished request to retry.
+    /// </summary>
+    /// <param name="unlock">Test seam for the ownership step (default PlayerData.Unlock).</param>
+    public static ExchangeResult Exchange(CatItem cat, Func<string, bool> unlock = null)
+    {
+        if (cat == null || _exchanging) return ExchangeResult.Failed;                // _exchanging: no re-entrant second call
+        if (PlayerData.IsOwned(cat.Id)) return ExchangeResult.AlreadyOwned;
+        int price = ShardPrice(cat);
+        if (!PlayerData.TrySpendShards(price)) return ExchangeResult.NotEnoughShards;
+
+        _exchanging = true;
+        bool owned;
+        try
+        {
+            try { (unlock ?? PlayerData.Unlock)(cat.Id); }
+            catch (Exception e) { Debug.LogException(e); }                           // a failing listener must not leave a half state
+            owned = PlayerData.IsOwned(cat.Id);
+            if (!owned) PlayerData.AddShards(price);                                 // nothing was granted: refund
+        }
+        finally { _exchanging = false; }
+
+        if (!owned) return ExchangeResult.Failed;
+        Commit();                                                                    // saves, refreshes the equipped cache, raises Changed
+        return ExchangeResult.Success;
+    }
+
+    /// <summary>Exchange, also telling the caller whether this exchange completed the theme and newly unlocked its skill (announced once).</summary>
+    public static ExchangeResult Exchange(CatItem cat, out ThemeSkillDef completed)
+    {
+        var skill = cat == null ? null : ThemeSkills.Of(cat.Theme);
+        bool hadSkill = skill != null && SetCompletion.IsSkillUnlocked(skill);
+        var result = Exchange(cat);
+        completed = result == ExchangeResult.Success && skill != null && !hadSkill && SetCompletion.IsSkillUnlocked(skill) ? skill : null;
+        return result;
     }
 
     static Rarity RollRarity(Balance b)

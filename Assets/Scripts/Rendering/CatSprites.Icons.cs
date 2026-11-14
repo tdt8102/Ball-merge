@@ -24,6 +24,39 @@ public static partial class CatSprites
         return _coin;
     }
 
+    static Sprite _shard;
+
+    /// <summary>Star shard: a blue five-point star (so it is never mistaken for the gold coin).</summary>
+    public static Sprite ShardIcon()
+    {
+        if (_shard != null) return _shard;
+        var cv = new Canvas(128, 1f, new Color(0.25f, 0.5f, 0.9f));
+        Color rim = new Color(0.22f, 0.42f, 0.86f), fill = new Color(0.55f, 0.82f, 1f), light = new Color(0.86f, 0.96f, 1f);
+
+        var tris = new Shape[10];
+        var outer = new Vector2[5];
+        var inner = new Vector2[5];
+        for (int i = 0; i < 5; i++)
+        {
+            float a = Mathf.PI * 0.5f + i * Mathf.PI * 0.4f;
+            outer[i] = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 0.47f;
+            float b = a + Mathf.PI * 0.2f;
+            inner[i] = new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * 0.21f;
+        }
+        for (int i = 0; i < 5; i++)
+        {
+            tris[i * 2] = Tri(Vector2.zero, outer[i], inner[i]);
+            tris[i * 2 + 1] = Tri(Vector2.zero, inner[i], outer[(i + 1) % 5]);
+        }
+        var star = Union(tris);
+        cv.Paint(Grow(star, 0.03f), rim);
+        cv.Paint(star, fill);
+        cv.Paint(Union(Tri(Vector2.zero, outer[0], inner[0]), Tri(Vector2.zero, inner[4], outer[0])), light);   // lit top point
+        cv.Paint(Ellipse(-0.1f, 0.12f, 0.05f, 0.035f), new Color(1f, 1f, 1f, 0.8f));                              // shine
+        _shard = MakeSprite(cv, 128, 1f);
+        return _shard;
+    }
+
     /// <summary>0 = gacha (gift), 1 = home, 2 = skin (t-shirt), 3 = shop (gem).</summary>
     public static Sprite TabIcon(int kind)
     {

@@ -18,6 +18,7 @@ public class GachaPage : MonoBehaviour
     static readonly Color Gold = new Color(0.9f, 0.6f, 0.1f);
     static readonly Color Cream = new Color(1f, 0.97f, 0.9f);
     static readonly Color Gray = new Color(0.72f, 0.66f, 0.6f);
+    static readonly Color ShardColor = new Color(0.2f, 0.45f, 0.85f);
     static readonly Vector2 Top = new Vector2(0.5f, 1f);
     static readonly Vector2 C = new Vector2(0.5f, 0.5f);
 
@@ -26,8 +27,10 @@ public class GachaPage : MonoBehaviour
     const int GridSize = 10;
 
     // ---- the tab itself
-    Text _coinText, _collection, _pity, _rates, _msg;
-    int _lastCoins = -1;
+    Text _coinText, _shardText, _collection, _pity, _rates, _msg;
+    int _lastCoins = -1, _lastShards = -1;
+    ExchangeScreen _exchange;
+    SetCompleteScreen _complete;
     RectTransform _boxRoot, _barFill;
     Image _glow;
     readonly Image[] _pullBg = new Image[2];
@@ -47,8 +50,10 @@ public class GachaPage : MonoBehaviour
     readonly Text[] _miniName = new Text[GridSize], _miniTag = new Text[GridSize];
     readonly GameObject[] _mini = new GameObject[GridSize];
     bool _busy, _tapped, _skip;
-    Image _beam, _gapLight, _cardCoin;
-    Text _cardAmount;
+    Image _beam, _gapLight, _cardCoin, _cardStar;
+    Text _cardAmount, _cardExtra;
+    readonly Image[] _miniStar = new Image[GridSize];
+    readonly Text[] _miniExtra = new Text[GridSize];
     Button _btnSkip;
     bool _blinkSingle;                              // the single prize is a duplicate: it blinks between the item and the coins
     readonly Image[] _miniBig = new Image[GridSize];
@@ -70,6 +75,12 @@ public class GachaPage : MonoBehaviour
         o.effectDistance = new Vector2(4, -4);
         Loc.Bind(title, () => Loc.T("tab_gacha"));
         _coinText = GameUI.CoinChip(page, new Vector2(0, 1), new Vector2(169, -95), out _);
+
+        // star shards (from duplicate cats) and the way to spend them, in the top-right corner
+        _shardText = GameUI.ShardChip(page, new Vector2(1, 1), new Vector2(-169, -95), out _);
+        var exchange = GameUI.Button(page, "Exchange", "", 34, new Vector2(1, 1), new Vector2(-169, -182), new Vector2(250, 72), Brown);
+        Loc.Bind(exchange, () => Loc.T("exchange"));
+        exchange.onClick.AddListener(() => { AudioManager.Instance.Click(); _exchange.Open(); });
 
         // the gift box (bobs gently) on a warm glow
         _glow = GameUI.Img(page, "Glow", CatSprites.Glow(), new Color(1f, 0.85f, 0.5f, 0.8f), Top, new Vector2(0, -650), new Vector2(700, 700));
@@ -109,7 +120,17 @@ public class GachaPage : MonoBehaviour
         _msg.gameObject.SetActive(false);
 
         BuildOverlay(overlayParent);
+        _complete = SetCompleteScreen.Create(overlayParent);
+        _exchange = ExchangeScreen.Create(overlayParent, _complete, Refresh);
         Loc.Changed += OnLanguage;
+    }
+
+    /// <summary>Put the opening overlay, the exchange screen and the "set complete" card (in that order) at this place in the canvas.</summary>
+    public void PlaceOverlays(int siblingIndex)
+    {
+        Overlay.transform.SetSiblingIndex(siblingIndex);
+        _exchange.transform.SetSiblingIndex(siblingIndex + 1);
+        _complete.transform.SetSiblingIndex(siblingIndex + 2);
     }
 
     void OnDestroy() => Loc.Changed -= OnLanguage;
@@ -156,6 +177,8 @@ public class GachaPage : MonoBehaviour
         }
         _coinText.text = PlayerData.Coins.ToString();
         _lastCoins = PlayerData.Coins;
+        _shardText.text = PlayerData.Shards.ToString();
+        _lastShards = PlayerData.Shards;
     }
 
     void OnPull(int count)
@@ -258,7 +281,26 @@ public class GachaPage : MonoBehaviour
         _cardName.color = Ink;
         _cardRarity = GameUI.Label(_cardRoot, "Rarity", "", 42, TextAnchor.MiddleCenter, C, new Vector2(0, -205), new Vector2(600, 56));
         _cardStatus = GameUI.Label(_cardRoot, "Status", "", 50, TextAnchor.MiddleCenter, C, new Vector2(0, -285), new Vector2(600, 70));
+        _cardStar = GameUI.Img(_cardRoot, "Star", CatSprites.ShardIcon(), Color.white, C, Vector2.zero, new Vector2(44, 44));
+        _cardExtra = GameUI.Label(_cardRoot, "Extra", "", 36, TextAnchor.MiddleLeft, C, Vector2.zero, new Vector2(520, 48));
         _cardRoot.gameObject.SetActive(false);
+    }
+
+    /// <summary>Centre "[star] text" (or only the text) on a line at height y; the label is left-aligned so its x is its left edge.</summary>
+    static void PlaceIconText(Image icon, Text label, string text, Color color, bool withIcon, float y, float iconSize)
+    {
+        label.text = text;
+        label.color = color;
+        float width = label.preferredWidth;
+        float total = withIcon ? iconSize + 8f + width : width;
+        float left = -total * 0.5f;
+        icon.gameObject.SetActive(withIcon);
+        if (withIcon)
+        {
+            icon.rectTransform.anchoredPosition = new Vector2(left + iconSize * 0.5f, y);
+            left += iconSize + 8f;
+        }
+        label.rectTransform.anchoredPosition = new Vector2(left, y);
     }
 
     void BuildGrid(RectTransform parent)
@@ -268,22 +310,25 @@ public class GachaPage : MonoBehaviour
         _gridRoot.SetParent(parent, false);
         _gridRoot.anchorMin = _gridRoot.anchorMax = C;
         _gridRoot.anchoredPosition = new Vector2(0, 40);
-        _gridRoot.sizeDelta = new Vector2(1000, 600);
+        _gridRoot.sizeDelta = new Vector2(1000, 640);
         for (int i = 0; i < GridSize; i++)
         {
-            var pos = new Vector2((i % 5 - 2) * 202f, i < 5 ? 140f : -140f);
-            _miniBorder[i] = GameUI.RoundImg(_gridRoot, "MiniBorder" + i, Brown, C, pos, new Vector2(194, 254), 34f);
+            // each card has a third line: the shards of a duplicate cat, or the set progress of a new cat
+            var pos = new Vector2((i % 5 - 2) * 202f, i < 5 ? 156f : -156f);
+            _miniBorder[i] = GameUI.RoundImg(_gridRoot, "MiniBorder" + i, Brown, C, pos, new Vector2(194, 290), 34f);
             _mini[i] = _miniBorder[i].gameObject;
             var rt = _miniBorder[i].rectTransform;
-            GameUI.RoundImg(rt, "Face", Cream, C, Vector2.zero, new Vector2(182, 242), 30f);
-            _miniThumb[i] = GameUI.Img(rt, "Thumb", null, Color.white, C, new Vector2(0, 46), new Vector2(130, 130));
+            GameUI.RoundImg(rt, "Face", Cream, C, Vector2.zero, new Vector2(182, 278), 30f);
+            _miniThumb[i] = GameUI.Img(rt, "Thumb", null, Color.white, C, new Vector2(0, 64), new Vector2(130, 130));
             _miniThumb[i].preserveAspect = true;
-            _miniName[i] = GameUI.Label(rt, "Name", "", 22, TextAnchor.MiddleCenter, C, new Vector2(0, -50), new Vector2(186, 34));
+            _miniName[i] = GameUI.Label(rt, "Name", "", 22, TextAnchor.MiddleCenter, C, new Vector2(0, -32), new Vector2(186, 34));
             _miniName[i].color = Ink;
-            _miniTag[i] = GameUI.Label(rt, "Tag", "", 28, TextAnchor.MiddleCenter, C, new Vector2(0, -90), new Vector2(180, 40));
-            _miniCoin[i] = GameUI.Img(rt, "Coin", CatSprites.CoinIcon(), Color.white, C, new Vector2(-34, -90), new Vector2(32, 32));
-            _miniBig[i] = GameUI.Img(rt, "BigCoin", CatSprites.CoinIcon(), Color.white, C, new Vector2(0, 46), new Vector2(110, 110));
+            _miniTag[i] = GameUI.Label(rt, "Tag", "", 28, TextAnchor.MiddleCenter, C, new Vector2(0, -72), new Vector2(180, 40));
+            _miniCoin[i] = GameUI.Img(rt, "Coin", CatSprites.CoinIcon(), Color.white, C, new Vector2(-34, -72), new Vector2(32, 32));
+            _miniBig[i] = GameUI.Img(rt, "BigCoin", CatSprites.CoinIcon(), Color.white, C, new Vector2(0, 64), new Vector2(110, 110));
             _miniBig[i].gameObject.SetActive(false);
+            _miniStar[i] = GameUI.Img(rt, "Star", CatSprites.ShardIcon(), Color.white, C, Vector2.zero, new Vector2(30, 30));
+            _miniExtra[i] = GameUI.Label(rt, "Extra", "", 24, TextAnchor.MiddleLeft, C, Vector2.zero, new Vector2(176, 34));
             _mini[i].SetActive(false);
         }
         _gridRoot.gameObject.SetActive(false);
@@ -417,6 +462,16 @@ public class GachaPage : MonoBehaviour
         if (results.Count == 1) yield return ShowSingle(results[0]);
         else yield return ShowGrid(results);
 
+        // 5. a result that finished a set: the "SET COMPLETE" card, after the prizes were seen. PullResult.Completed is only set
+        // by the result that newly unlocked the skill, so each unlock is announced exactly once.
+        foreach (var r in results)
+        {
+            if (r.Completed == null) continue;
+            yield return new WaitForSecondsRealtime(0.5f);
+            _complete.Show(r.Completed);
+            while (_complete.IsOpen) yield return null;
+        }
+
         _btnOk.gameObject.SetActive(true);
         _busy = false;
     }
@@ -444,6 +499,19 @@ public class GachaPage : MonoBehaviour
 
     IEnumerator ShowSingle(PullResult r)
     {
+        FillSingle(r);
+        for (float a = 0f; a < 0.4f; a += Time.unscaledDeltaTime)
+        {
+            float k = a / 0.4f;
+            _cardRoot.localScale = Vector3.one * Pop(k);
+            yield return null;
+        }
+        _cardRoot.localScale = Vector3.one;
+    }
+
+    /// <summary>The single prize card, filled from the PullResult (the pop-in animation is ShowSingle's).</summary>
+    void FillSingle(PullResult r)
+    {
         var item = r.Item;
         var rc = Cosmetics.RarityColor(item.Rarity);
         _prize = item;
@@ -455,6 +523,9 @@ public class GachaPage : MonoBehaviour
         _cardRarity.color = rc;
         _cardStatus.text = r.IsNew ? Loc.T("new_item") : Loc.T("duplicate") + "  +" + r.Refund + " " + Loc.T("coins");
         _cardStatus.color = r.IsNew ? Green : Gold;
+        if (r.Shards > 0) PlaceIconText(_cardStar, _cardExtra, Loc.T("shard_gain").Replace("{0}", r.Shards.ToString()), ShardColor, true, -336f, 44f);
+        else if (r.IsNew && item is CatItem cat) PlaceIconText(_cardStar, _cardExtra, SkillText.SetProgress(cat.Theme, r.SetOwned, r.SetTotal), Soft, false, -336f, 44f);
+        else { _cardStar.gameObject.SetActive(false); _cardExtra.text = ""; }
         _blinkSingle = !r.IsNew;
         _cardCoin.gameObject.SetActive(false);
         _cardAmount.gameObject.SetActive(false);
@@ -466,14 +537,6 @@ public class GachaPage : MonoBehaviour
         _equipLabel.text = Loc.T("equip");
         _btnEquip.interactable = true;
         _btnEquip.targetGraphic.color = Green;
-
-        for (float a = 0f; a < 0.4f; a += Time.unscaledDeltaTime)
-        {
-            float k = a / 0.4f;
-            _cardRoot.localScale = Vector3.one * Pop(k);
-            yield return null;
-        }
-        _cardRoot.localScale = Vector3.one;
     }
 
     IEnumerator ShowGrid(List<PullResult> results)
@@ -487,15 +550,7 @@ public class GachaPage : MonoBehaviour
         {
             var r = results[i];
             var rc = Cosmetics.RarityColor(r.Item.Rarity);
-            _miniBorder[i].color = rc;
-            _miniThumb[i].sprite = CosmeticUI.Thumb(r.Item);
-            _miniName[i].text = r.Item.Name;
-            _miniTag[i].text = r.IsNew ? Loc.T("new_item") : "+" + r.Refund;
-            _miniTag[i].color = r.IsNew ? Green : Gold;
-            _miniCoin[i].gameObject.SetActive(!r.IsNew);
-            _miniDup[i] = !r.IsNew;
-            _miniTag[i].rectTransform.anchoredPosition = new Vector2(r.IsNew ? 0 : 14, -90);
-            _mini[i].SetActive(true);
+            FillMini(i, r);
             _mini[i].transform.localScale = Vector3.zero;
             if (r.Item.Rarity == Rarity.Legendary) { AudioManager.Instance.Fanfare(); Haptics.Heavy(); SpawnConfetti(50, _gridRoot.anchoredPosition + (Vector2)_mini[i].GetComponent<RectTransform>().anchoredPosition, rc); }
             else if (r.Item.Rarity == Rarity.Rare) { AudioManager.Instance.Discover(); Haptics.Medium(); }
@@ -515,17 +570,29 @@ public class GachaPage : MonoBehaviour
 
     void ShowMiniInstant(int i, PullResult r)
     {
-        var rc = Cosmetics.RarityColor(r.Item.Rarity);
-        _miniBorder[i].color = rc;
+        FillMini(i, r);
+        _mini[i].transform.localScale = Vector3.one;
+    }
+
+    /// <summary>
+    /// One result in the grid. Line 1: NEW! or the coin refund. Line 2 (cats only): a duplicate shows the shards it gave,
+    /// a new cat the progress of its set ("Pixel 8 / 11"). Everything shown comes from the PullResult.
+    /// </summary>
+    void FillMini(int i, PullResult r)
+    {
+        _miniBorder[i].color = Cosmetics.RarityColor(r.Item.Rarity);
         _miniThumb[i].sprite = CosmeticUI.Thumb(r.Item);
         _miniName[i].text = r.Item.Name;
         _miniTag[i].text = r.IsNew ? Loc.T("new_item") : "+" + r.Refund;
         _miniTag[i].color = r.IsNew ? Green : Gold;
         _miniCoin[i].gameObject.SetActive(!r.IsNew);
         _miniDup[i] = !r.IsNew;
-        _miniTag[i].rectTransform.anchoredPosition = new Vector2(r.IsNew ? 0 : 14, -90);
+        _miniTag[i].rectTransform.anchoredPosition = new Vector2(r.IsNew ? 0 : 14, -72);
+
+        if (r.Shards > 0) PlaceIconText(_miniStar[i], _miniExtra[i], "+" + r.Shards, ShardColor, true, -108f, 30f);
+        else if (r.IsNew && r.Item is CatItem cat) PlaceIconText(_miniStar[i], _miniExtra[i], SkillText.SetProgress(cat.Theme, r.SetOwned, r.SetTotal), Soft, false, -108f, 30f);
+        else { _miniStar[i].gameObject.SetActive(false); _miniExtra[i].text = ""; }
         _mini[i].SetActive(true);
-        _mini[i].transform.localScale = Vector3.one;
     }
 
     /// <summary>0..1 -> scale that overshoots a little and settles on 1.</summary>
@@ -553,6 +620,8 @@ public class GachaPage : MonoBehaviour
     /// <summary>Back button: skip the animation, or close the result. Returns false when nothing was open.</summary>
     public bool OnBack()
     {
+        if (_complete.IsOpen) { _complete.Close(); return true; }
+        if (_exchange.IsOpen) { _exchange.Close(); return true; }
         if (!IsOpen) return false;
         if (_busy) { _tapped = true; _skip = true; } else Close();
         return true;
@@ -636,6 +705,6 @@ public class GachaPage : MonoBehaviour
             if (_msgT >= 2f) _msg.gameObject.SetActive(false);
         }
 
-        if (_lastCoins != PlayerData.Coins && _collection != null && !IsOpen) Refresh();
+        if ((_lastCoins != PlayerData.Coins || _lastShards != PlayerData.Shards) && _collection != null && !IsOpen) Refresh();
     }
 }

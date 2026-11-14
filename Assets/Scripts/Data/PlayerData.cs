@@ -24,6 +24,10 @@ public class RunSnapshot
     public int next;                 // level of the next cat to offer
     public int coins;                // coins earned in this run (for the game-over summary)
     public List<CatState> cats = new List<CatState>();
+    public bool skillRecorded;       // false in saves written before theme skills: the skill is then resolved once on resume
+    public bool energyRecorded;      // false in older saves: the run then starts with the starting energy
+    public int energy;               // theme skill energy (0..max), kept when the run is continued
+    public string activeSkillId = "";   // theme skill chosen when the run started ("" = none); fixed for the whole run
 }
 
 public static class PlayerData
@@ -45,6 +49,8 @@ public static class PlayerData
         public string frame = Cosmetics.DefaultFrame;                 // equipped tray frame
         public int pity;                                              // gacha pulls since the last Legendary
         public string lang = "";                 // "en", "vi" or "" = follow the device
+        public int shards;                                            // star shards (older saves have none: 0)
+        public List<string> skillsUnlocked = new List<string>();      // ids of theme skills unlocked by a complete set (see SetCompletion)
     }
 
     static Data _d;
@@ -154,6 +160,38 @@ public static class PlayerData
     {
         if (string.IsNullOrEmpty(id) || D.skins.Contains(id)) return false;
         D.skins.Add(id);
+        _dirty = true;
+        SetCompletion.OnOwned(id);
+        return true;
+    }
+
+    // ---- star shards (earned from duplicate cats, spent on exchanging a cat; see Cosmetics.Exchange)
+    public static int Shards => D.shards;
+
+    public static void AddShards(int amount)
+    {
+        if (amount <= 0) return;
+        D.shards = (int)System.Math.Min((long)D.shards + amount, int.MaxValue);
+        _dirty = true;
+    }
+
+    /// <summary>Spend exactly this many shards, or nothing (false) when there are not enough.</summary>
+    public static bool TrySpendShards(int amount)
+    {
+        if (amount < 0 || D.shards < amount) return false;
+        D.shards -= amount;
+        _dirty = true;
+        return true;
+    }
+
+    /// <summary>Theme skills unlocked so far (stored separately from ownership so an unlock is announced only once).</summary>
+    public static bool IsSkillUnlocked(string skillId) => D.skillsUnlocked.Contains(skillId);
+
+    /// <summary>Returns true if the skill was newly marked as unlocked.</summary>
+    public static bool MarkSkillUnlocked(string skillId)
+    {
+        if (string.IsNullOrEmpty(skillId) || D.skillsUnlocked.Contains(skillId)) return false;
+        D.skillsUnlocked.Add(skillId);
         _dirty = true;
         return true;
     }
@@ -283,5 +321,9 @@ public static class PlayerData
             if (_d.seen != null) Array.Copy(_d.seen, fixedSeen, Mathf.Min(_d.seen.Length, Levels));
             _d.seen = fixedSeen;
         }
+        // older saves have no unlock list: sets that are already complete unlock now, silently (nothing to announce)
+        if (_d.shards < 0) _d.shards = 0;                       // a damaged value must not become a debt
+        if (_d.skillsUnlocked == null) _d.skillsUnlocked = new List<string>();
+        SetCompletion.Backfill();
     }
 }

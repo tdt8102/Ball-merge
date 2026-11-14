@@ -38,7 +38,7 @@ public class MenuController : MonoBehaviour
     GachaPage _gacha;
     SkinPage _skin;
     Image[] _bobImages;
-    Text _homeCoins;
+    Text _homeCoins, _codexLabel;
     int _shownCoins = -1;
     readonly int[] _bobLevels = { 0, 3, 10, 4, 8 };
 
@@ -50,8 +50,7 @@ public class MenuController : MonoBehaviour
             if (_codex == null)
             {
                 _codex = CodexScreen.Create(_root);
-                _codex.Root.transform.SetSiblingIndex(_popup.Root.transform.GetSiblingIndex());
-            }
+                _codex.Root.transform.SetSiblingIndex(_popup.Root.transform.GetSiblingIndex());            }
             return _codex;
         }
     }
@@ -109,7 +108,7 @@ public class MenuController : MonoBehaviour
         BuildSoonPage(3);
         BuildTabBar();
         _popup = SettingsPopup.Create(_root, false);
-        _gacha.Overlay.transform.SetSiblingIndex(_popup.Root.transform.GetSiblingIndex());   // the gacha opening covers the tab bar, below the popup
+        _gacha.PlaceOverlays(_popup.Root.transform.GetSiblingIndex());   // the gacha opening, the exchange screen and the "set complete" card cover the tab bar, below the popup
         Cosmetics.Changed += RefreshHomeCats;
         BuildLoadingPanel();
         _loadingPanel.SetActive(false);
@@ -171,9 +170,10 @@ public class MenuController : MonoBehaviour
         Loc.Bind(bestLbl, () => Loc.T("best") + "  " + PlayerData.Best);
 
         // Cat Codex entry
-        var codexBtn = GameUI.Button(p, "Codex", "CAT CODEX   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1), 44, Center, new Vector2(0, hasRun ? -655 : -620), new Vector2(620, 110), Brown);
+        var codexBtn = GameUI.Button(p, "Codex", "", 44, Center, new Vector2(0, hasRun ? -655 : -620), new Vector2(620, 120), Brown);
         codexBtn.onClick.AddListener(() => { AudioManager.Instance.Click(); Codex.Open(); });
-        Loc.Bind(codexBtn, () => Loc.T("codex") + "   " + PlayerData.DiscoveredCount + " / " + (CatDatabase.MaxLevel + 1));
+        Loc.Bind(codexBtn, CodexLabel);
+        _codexLabel = codexBtn.GetComponentInChildren<Text>();
 
         // coins (top-left) and the only settings entry: a gear icon in the top-right corner
         _homeCoins = GameUI.CoinChip(p, new Vector2(0, 1), new Vector2(169, -95), out _);
@@ -181,6 +181,10 @@ public class MenuController : MonoBehaviour
         GameUI.Img((RectTransform)gear.transform, "Gear", CatSprites.Gear(), Color.white, Center, Vector2.zero, new Vector2(78, 78));
         gear.onClick.AddListener(() => { AudioManager.Instance.Click(); _popup.Open(); });
     }
+
+    /// <summary>"CAT CODEX" and, under it, how many skins (themes) have a complete Codex page. Same rule as the Codex pages (CodexProgress).</summary>
+    static string CodexLabel() =>
+        Loc.T("codex") + "\n<size=28>" + Loc.T("codex_sets").Replace("{0}", CodexProgress.CompleteThemes().ToString()).Replace("{1}", Cosmetics.Cats.Count.ToString()) + "</size>";
 
     /// <summary>The cats on Home wear whatever was just equipped in the Skin tab.</summary>
     void RefreshHomeCats()
@@ -296,6 +300,7 @@ public class MenuController : MonoBehaviour
         }
         if (tab == 0 && _gacha != null) _gacha.Refresh();
         if (tab == 2 && _skin != null) _skin.Refresh();
+        if (tab == HomeTab && _codexLabel != null) _codexLabel.text = CodexLabel();      // the collection may have changed in Gacha / Skin
     }
 
     // ------------------------------------------------------------------ loading screen

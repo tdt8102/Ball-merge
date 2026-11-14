@@ -30,6 +30,40 @@ public class Balance
     public float dupRefundRare = 0.4f;
     public float dupRefundLegendary = 0.6f;
 
+    // ---- Theme Set Skills: energy ----
+    public int themeSkillMaxEnergy = 100;       // percent
+    public int themeSkillStartingEnergy = 30;   // percent at the start of a new run
+    public int themeSkillEnergyPerMerge = 6;    // percent per normal merge
+    public int themeSkillCost = 100;            // percent spent by one skill use
+
+    // ---- Theme Set Skills: shards ----
+    public int shardRewardPerDuplicateCat = 1;  // only duplicate cats, never backgrounds/frames
+    public int shardCostCommon = 20;
+    public int shardCostRare = 30;
+    public int shardCostLegendary = 40;
+    public int shardCostMajesty = 50;           // reserved for the level-10 "Majesty" cat
+
+    // ---- Theme Set Skills: individual skills ----
+    public float hugDuration = 3f;              // seconds
+    public float hugRadius = 3f;                // world units
+    public float hugAcceleration = 8f;          // strongest pull in units/s^2 (gravity is 20), fades to 0 at the radius; same for every cat mass
+    public float hugMaxSpeed = 2f;              // the pull never builds more speed than this towards the partner (units/s)
+    public float shrinkScale = 0.85f;           // visual scale and collider radius multiplier
+    public float shrinkDuration = 6f;           // seconds at the small size
+    public float shrinkRestoreDuration = 1.5f;  // seconds to grow back
+    public bool shrinkRestorePausesDanger = false;  // true = the red-line timer is also held while the cats grow back (not approved yet: off)
+    public float moonlightDuration = 8f;        // seconds the danger timer is paused
+    public float sugarRushDuration = 10f;       // seconds
+    public float sugarRushScoreMultiplier = 2f; // merge score only
+    public float sugarRushCoinMultiplier = 1.5f; // merge coin only
+    public int levelUpMinLevel = 0;             // target levels allowed
+    public int levelUpMaxLevel = 8;
+    public int levelUpMaxResult = 9;            // the skill must never create level 10
+    public int midasMinLevel = 0;               // target levels allowed
+    public int midasMaxLevel = 7;
+    public int midasBaseCoin = 3;               // coins = base + perLevel * cat level
+    public int midasCoinPerLevel = 2;
+
     // ---- gameplay ----
     public float gravity = 20f;
     public float friction = 0.35f;
@@ -69,5 +103,40 @@ public class Balance
         gachaCost = Mathf.Max(1, gachaCost);
         gachaRateRare = Mathf.Clamp(gachaRateRare, 0, 100);
         gachaRateLegendary = Mathf.Clamp(gachaRateLegendary, 0, 100 - gachaRateRare);
+
+        // Theme Set Skills. Missing fields in an older balance.json keep the defaults above.
+        themeSkillMaxEnergy = Mathf.Max(1, themeSkillMaxEnergy);
+        themeSkillStartingEnergy = Mathf.Clamp(themeSkillStartingEnergy, 0, themeSkillMaxEnergy);
+        themeSkillEnergyPerMerge = Mathf.Max(0, themeSkillEnergyPerMerge);
+        themeSkillCost = Mathf.Clamp(themeSkillCost, 1, themeSkillMaxEnergy);
+
+        shardRewardPerDuplicateCat = Mathf.Max(0, shardRewardPerDuplicateCat);
+        shardCostCommon = Mathf.Max(0, shardCostCommon);
+        shardCostRare = Mathf.Max(0, shardCostRare);
+        shardCostLegendary = Mathf.Max(0, shardCostLegendary);
+        shardCostMajesty = Mathf.Max(0, shardCostMajesty);
+
+        hugDuration = Mathf.Max(0f, hugDuration);
+        hugRadius = Mathf.Max(0f, hugRadius);
+        hugAcceleration = Mathf.Max(0f, hugAcceleration);
+        hugMaxSpeed = Mathf.Max(0f, hugMaxSpeed);
+        shrinkScale = Mathf.Clamp(shrinkScale, 0.1f, 1f);
+        shrinkDuration = Mathf.Max(0f, shrinkDuration);
+        shrinkRestoreDuration = Mathf.Max(0f, shrinkRestoreDuration);
+        moonlightDuration = Mathf.Max(0f, moonlightDuration);
+        sugarRushDuration = Mathf.Max(0f, sugarRushDuration);
+        sugarRushScoreMultiplier = Mathf.Max(0f, sugarRushScoreMultiplier);
+        sugarRushCoinMultiplier = Mathf.Max(0f, sugarRushCoinMultiplier);
+        int levelUpTargetCap = Mathf.Min(ThemeSkills.LevelUpMaxTargetLevel, CatDatabase.MaxLevel);
+        int levelUpResultCap = Mathf.Min(ThemeSkills.LevelUpMaxResultLevel, CatDatabase.MaxLevel);
+        levelUpMinLevel = Mathf.Clamp(levelUpMinLevel, 0, levelUpTargetCap);
+        levelUpMaxLevel = Mathf.Clamp(levelUpMaxLevel, levelUpMinLevel, levelUpTargetCap);
+        int levelUpResultFloor = Mathf.Min(levelUpMaxLevel + 1, levelUpResultCap);
+        levelUpMaxResult = Mathf.Clamp(levelUpMaxResult, levelUpResultFloor, levelUpResultCap);
+        int midasTargetCap = Mathf.Min(ThemeSkills.MidasMaxTargetLevel, CatDatabase.MaxLevel);
+        midasMinLevel = Mathf.Clamp(midasMinLevel, 0, midasTargetCap);
+        midasMaxLevel = Mathf.Clamp(midasMaxLevel, midasMinLevel, midasTargetCap);
+        midasBaseCoin = Mathf.Max(0, midasBaseCoin);
+        midasCoinPerLevel = Mathf.Max(0, midasCoinPerLevel);
     }
 }

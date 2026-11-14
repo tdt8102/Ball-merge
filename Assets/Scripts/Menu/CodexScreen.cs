@@ -15,6 +15,7 @@ public class CodexScreen
     static readonly Color Soft = new Color(0.5f, 0.36f, 0.28f);
     static readonly Color Gold = new Color(0.9f, 0.6f, 0.1f);
     static readonly Color Orange = new Color(0.95f, 0.6f, 0.2f);
+    static readonly Color Green = new Color(0.2f, 0.65f, 0.4f);
     static readonly Color Cream = new Color(1f, 0.97f, 0.9f);
 
     const int Levels = CatDatabase.MaxLevel + 1;
@@ -105,7 +106,7 @@ public class CodexScreen
         _barFill.pivot = new Vector2(0, 0.5f);
 
         // 3 columns; the last row (2 cats) is centred
-        const float w = 310f, h = 270f, gapY = 18f, firstRowY = -395f - h * 0.5f;
+        const float w = 310f, h = 230f, gapY = 14f, firstRowY = -395f - h * 0.5f;
         float[] colX = { -340f, 0f, 340f };
         for (int i = 0; i < Levels; i++)
         {
@@ -114,11 +115,14 @@ public class CodexScreen
             BuildCard(rt, i, top, new Vector2(x, firstRowY - row * (h + gapY)), w, h);
         }
 
+        // the skill of this theme, under the cats: shown for every theme, finished or not (preview only)
+        BuildSkillCard(rt, top, new Vector2(0, -1500));
+
         // page dots
         int pages = Cosmetics.Cats.Count;
         _dots = new Image[pages];
         for (int i = 0; i < pages; i++)
-            _dots[i] = GameUI.Img(rt, "Dot" + i, SpriteFactory.Disc, Color.white, top, new Vector2((i - (pages - 1) * 0.5f) * 44f, -1625), new Vector2(24, 24));
+            _dots[i] = GameUI.Img(rt, "Dot" + i, SpriteFactory.Disc, Color.white, top, new Vector2((i - (pages - 1) * 0.5f) * 44f, -1685), new Vector2(24, 24));
 
         var back = GameUI.Button(rt, "Back", "", 50, new Vector2(0.5f, 0), new Vector2(0, 95), new Vector2(460, 100), Brown);
         back.onClick.AddListener(() => { AudioManager.Instance.Click(); Close(); });
@@ -141,12 +145,70 @@ public class CodexScreen
         var cr = (RectTransform)card.transform;
         var c = new Vector2(0.5f, 0.5f);
 
-        _icons[level] = GameUI.Img(cr, "Cat", null, Color.white, c, new Vector2(0, 38), new Vector2(180, 180));
-        _names[level] = GameUI.Label(cr, "Name", "", 34, TextAnchor.MiddleCenter, c, new Vector2(0, -72), new Vector2(w - 20, 46));
+        _icons[level] = GameUI.Img(cr, "Cat", null, Color.white, c, new Vector2(0, 30), new Vector2(150, 150));
+        _names[level] = GameUI.Label(cr, "Name", "", 34, TextAnchor.MiddleCenter, c, new Vector2(0, -54), new Vector2(w - 20, 46));
         _names[level].color = Ink;
-        _subs[level] = GameUI.Label(cr, "Sub", "", 28, TextAnchor.MiddleCenter, c, new Vector2(-14, -112), new Vector2(w - 20, 40));
+        _subs[level] = GameUI.Label(cr, "Sub", "", 28, TextAnchor.MiddleCenter, c, new Vector2(-14, -92), new Vector2(w - 20, 40));
         _subs[level].color = Soft;
-        _coins[level] = GameUI.Img(cr, "Coin", CatSprites.CoinIcon(), Color.white, c, new Vector2(-46, -112), new Vector2(34, 34));
+        _coins[level] = GameUI.Img(cr, "Coin", CatSprites.CoinIcon(), Color.white, c, new Vector2(-46, -92), new Vector2(34, 34));
+    }
+
+    // ---- skill card (preview only: nothing here can start, test or activate a skill)
+
+    Image _skillBorder, _skillIcon, _skillFill;
+    Text _skillName, _skillState, _skillDesc, _skillProgress, _skillReason;
+    const float SkillBarW = 380f;
+
+    void BuildSkillCard(RectTransform parent, Vector2 anchor, Vector2 pos)
+    {
+        var c = new Vector2(0.5f, 0.5f);
+        _skillBorder = GameUI.RoundImg(parent, "SkillBorder", Brown, anchor, pos, new Vector2(1008, 258), 40f);
+        var face = GameUI.RoundImg((RectTransform)_skillBorder.transform, "SkillCard", Cream, c, Vector2.zero, new Vector2(1000, 250), 36f);
+        var cr = (RectTransform)face.transform;
+
+        _skillIcon = GameUI.Img(cr, "Icon", null, Color.white, c, new Vector2(-405, 8), new Vector2(160, 160));
+        _skillName = GameUI.Label(cr, "Name", "", 42, TextAnchor.MiddleLeft, c, new Vector2(-310, 92), new Vector2(520, 54));
+        _skillName.color = Ink;
+        _skillState = GameUI.Label(cr, "State", "", 30, TextAnchor.MiddleRight, c, new Vector2(330, 92), new Vector2(300, 44));
+        _skillDesc = GameUI.Label(cr, "Desc", "", 26, TextAnchor.UpperLeft, c, new Vector2(-310, 62), new Vector2(790, 92));
+        _skillDesc.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _skillDesc.fontStyle = FontStyle.Normal;
+        _skillDesc.color = Ink;
+        _skillProgress = GameUI.Label(cr, "Progress", "", 28, TextAnchor.MiddleLeft, c, new Vector2(-310, -48), new Vector2(330, 38));
+        _skillProgress.color = Ink;
+        var track = GameUI.RoundImg(cr, "Track", new Color(0.85f, 0.75f, 0.6f), c, new Vector2(240, -48), new Vector2(SkillBarW, 16), 8f);
+        _skillFill = GameUI.RoundImg((RectTransform)track.transform, "Fill", Orange, new Vector2(0, 0.5f), Vector2.zero, new Vector2(0, 16), 8f);
+        _skillFill.rectTransform.pivot = new Vector2(0, 0.5f);
+        _skillReason = GameUI.Label(cr, "Reason", "", 25, TextAnchor.UpperLeft, c, new Vector2(-310, -76), new Vector2(790, 60));
+        _skillReason.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _skillReason.fontStyle = FontStyle.Normal;
+    }
+
+    void RefreshSkillCard(CatStyle theme)
+    {
+        var s = ThemeSkillInfo.Of(theme);
+        bool has = s.HasSkill;
+        _skillIcon.gameObject.SetActive(has);
+        if (has)
+        {
+            _skillIcon.sprite = CosmeticUI.SkillIcon(s.Skill);
+            _skillIcon.color = s.State == SkillState.Locked ? CosmeticUI.Locked : Color.white;
+        }
+        _skillName.text = has ? SkillText.Name(s.Skill) : Loc.T("skill_title");
+        _skillState.text = SkillText.State(s.State);
+        _skillState.color = CosmeticUI.StateColor(s.State);
+        _skillDesc.text = has ? SkillText.Description(s.Skill) + "\n" + SkillText.Cost() : "";
+        _skillProgress.gameObject.SetActive(has);
+        _skillFill.transform.parent.gameObject.SetActive(has);
+        if (has)
+        {
+            _skillProgress.text = Loc.T("skill_collected") + "  " + s.Owned + " / " + s.Total;
+            _skillFill.rectTransform.sizeDelta = new Vector2(SkillBarW * s.Owned / Mathf.Max(1, s.Total), 16f);
+            _skillFill.color = s.Complete ? Green : Orange;
+        }
+        _skillReason.text = SkillText.Reason(s);
+        _skillReason.color = s.State == SkillState.Active ? Green : Soft;
+        _skillReason.rectTransform.anchoredPosition = new Vector2(-310, has ? -76 : 40);
     }
 
     void Refresh()
@@ -156,12 +218,11 @@ public class CodexScreen
         _themeName.text = theme.Name;
         for (int i = 0; i < _dots.Length; i++) _dots[i].color = i == _page ? Orange : new Color(0.85f, 0.75f, 0.6f);
 
-        int have = 0;
+        int have = CodexProgress.Have(theme);
         for (int i = 0; i < Levels; i++)
         {
             var item = Cosmetics.CatItemOf(theme, i);
-            bool seen = classic ? PlayerData.IsDiscovered(i) : PlayerData.IsOwned(item.Id);
-            if (seen) have++;
+            bool seen = CodexProgress.Found(theme, i);
 
             ShowCat(_icons[i], i, theme.Index, seen ? Color.white : new Color(0.07f, 0.05f, 0.07f, 1f));     // black silhouette when not found
             _cards[i].color = seen ? Cream : new Color(0.93f, 0.88f, 0.8f);
@@ -174,7 +235,7 @@ public class CodexScreen
                 {
                     _subs[i].text = Loc.T("seen") + "  x" + PlayerData.Seen(i);
                     _subs[i].color = Soft;
-                    _subs[i].rectTransform.anchoredPosition = new Vector2(0, -112);
+                    _subs[i].rectTransform.anchoredPosition = new Vector2(0, -92);
                     _coins[i].gameObject.SetActive(false);
                 }
                 else
@@ -183,7 +244,7 @@ public class CodexScreen
                     bool starter = reward <= 0;
                     _subs[i].text = starter ? Loc.T("starter") : "+" + reward;
                     _subs[i].color = starter ? Soft : Gold;
-                    _subs[i].rectTransform.anchoredPosition = new Vector2(starter ? 0 : 14, -112);
+                    _subs[i].rectTransform.anchoredPosition = new Vector2(starter ? 0 : 14, -92);
                     _coins[i].gameObject.SetActive(!starter);
                 }
             }
@@ -191,12 +252,13 @@ public class CodexScreen
             {
                 _subs[i].text = CosmeticUI.RarityName(item.Rarity);
                 _subs[i].color = Cosmetics.RarityColor(item.Rarity);
-                _subs[i].rectTransform.anchoredPosition = new Vector2(0, -112);
+                _subs[i].rectTransform.anchoredPosition = new Vector2(0, -92);
                 _coins[i].gameObject.SetActive(false);
             }
         }
         _progress.text = Loc.T(classic ? "discovered" : "collected") + "  " + have + " / " + Levels;
         _barFill.sizeDelta = new Vector2(_barWidth * have / Levels, 24f);
+        RefreshSkillCard(theme);
     }
 
     void ShowCat(Image img, int level, int style, Color shown)

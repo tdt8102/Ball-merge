@@ -40,6 +40,7 @@ public class SkinPage : MonoBehaviour
     Image _tray;
     readonly Image[] _previewCats = new Image[3];
     GameObject _catGroup;
+    SkinSkillPanel _skill;
     Text _themeName, _themeSub;
     Button _equipSet;
     Image _equipSetBg;
@@ -79,6 +80,7 @@ public class SkinPage : MonoBehaviour
         }
 
         BuildPreview(page);
+        _skill = new SkinSkillPanel(page, PreviewCenter);            // skill + progress cards on each side of the tray
         BuildThemePager(page);
         for (int i = 0; i < MaxTiles; i++) _tiles[i] = BuildTile(page, i);
 
@@ -175,6 +177,7 @@ public class SkinPage : MonoBehaviour
         if (_tiles[0] == null) return;
         for (int i = 0; i < 3; i++) _chips[i].color = i == (int)_tab ? Orange : Brown;
         _catGroup.SetActive(_tab == Tab.Cats);
+        _skill.SetActive(_tab == Tab.Cats);
         RefreshPreview();
         if (_tab == Tab.Cats) RefreshCats(); else RefreshOthers();
     }
@@ -196,6 +199,9 @@ public class SkinPage : MonoBehaviour
     {
         RefreshSlotRow();
         if (_slot >= 0) RefreshSlotView(); else RefreshThemeView();
+        // the skill cards only show what the shared sources say: the browsed theme, or (cat-number view) the whole outfit
+        if (_slot >= 0) _skill.ShowOutfit(SkillResolver.Resolve());
+        else _skill.ShowTheme(ThemeSkillInfo.Of(Cosmetics.Cats[_theme]));
     }
 
     /// <summary>The 11 cells at the top: what each cat number wears now; the one being edited is outlined.</summary>

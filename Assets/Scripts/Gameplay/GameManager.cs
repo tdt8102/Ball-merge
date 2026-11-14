@@ -12,14 +12,14 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance { get; private set; }
 
     // ---- Layout (world units). Container inner width = 6, floor top at FloorY. ----
-    const float HalfWidth = 3f;
-    const float FloorY = -5.2f;
-    const float WallTopY = 3.8f;
+    public const float HalfWidth = 3f;
+    public const float FloorY = -5.2f;
+    public const float WallTopY = 3.8f;
     const float DangerY = 3.0f;       // cats resting above this line for too long = game over
-    const float SpawnY = 4.5f;        // dropper height
+    public const float SpawnY = 4.5f;        // dropper height
     const float WallThickness = 0.5f;
-    const float ViewWidth = 7.4f;     // world width always visible on screen
-    const float MinViewHeightHalf = 6.6f;
+    public const float ViewWidth = 7.4f;     // world width always visible on screen
+    public const float MinViewHeightHalf = 6.6f;
 
     static float DropCooldown => Balance.Current.dropCooldown;
     static float GameOverDelay => Balance.Current.gameOverDelay;
@@ -37,8 +37,15 @@ public class GameManager : MonoBehaviour
     PhysicMaterial _mat;
     readonly List<Cat> _cats = new List<Cat>();
     Cat _held;
-    SpriteRenderer _aimLine, _dangerLine;
-    float _aimX, _dangerTimer, _cooldown;
+    SpriteRenderer _aimLine, _dangerLine, _dim;
+
+    /// <summary>Activation of the run's theme skill (button, target mode, timed effect). Created in Awake.</summary>
+    public SkillRuntime Skills { get; private set; }
+    float _aimX, _cooldown;
+    readonly HugEffect _hug = new HugEffect();                      // Hug: pulls same-level cats together
+    readonly ShrinkEffect _shrink = new ShrinkEffect();             // Shrink: size factor of every cat
+    readonly RewardMultiplier _rewards = new RewardMultiplier();   // Sugar Rush multiplier for merge rewards
+    readonly DangerTimer _danger = new DangerTimer();   // the red-line timer; Moonlight pauses it
     bool _aiming;
     int _combo;
     float _lastMergeTime = -100f, _warnT;
@@ -47,6 +54,14 @@ public class GameManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        Skills = new SkillRuntime(Energy);
+        SkillHandlers.Register(ThemeSkills.MoonlightId, () => new MoonlightHandler(_danger));
+        SkillHandlers.Register(ThemeSkills.HugId, () => new HugHandler(_hug));
+        SkillHandlers.Register(ThemeSkills.ShrinkId, () => new ShrinkHandler(_shrink, ApplyShrink));
+        SkillHandlers.Register(ThemeSkills.MidasId, () => new MidasHandler(SellCat));
+        SkillHandlers.Register(ThemeSkills.LevelUpId, () => new LevelUpHandler(UpgradeCat));
+        SkillHandlers.Register(ThemeSkills.EraserId, () => new EraserHandler(EraseCat));
+        SkillHandlers.Register(ThemeSkills.SugarRushId, () => new SugarRushHandler(_rewards));
         Time.timeScale = 1f;                // in case the previous scene was left while paused
 #if !UNITY_WEBGL
         Application.targetFrameRate = 60;   // WebGL: keep the default (requestAnimationFrame); a fixed target makes it use setTimeout and stutter on phones
@@ -93,8 +108,11 @@ public class GameManager : MonoBehaviour
         cam.backgroundColor = Cosmetics.Bg.Outer;
         cam.clearFlags = CameraClearFlags.SolidColor;
         // Fit width first; make sure the full height is visible too.
-        cam.orthographicSize = Mathf.Max(ViewWidth / cam.aspect * 0.5f, MinViewHeightHalf);
+        cam.orthographicSize = CameraHalfHeight(cam.aspect);
     }
+
+    /// <summary>Half the visible world height for a screen aspect (width / height). The HUD layout uses the same rule.</summary>
+    public static float CameraHalfHeight(float aspect) => Mathf.Max(ViewWidth / aspect * 0.5f, MinViewHeightHalf);
 
     void BuildPlayfield()
     {
@@ -145,6 +163,9 @@ public class GameManager : MonoBehaviour
         var aim = bg.Ink;
         aim.a = 0.22f;
         _aimLine = Quad(root, "Aim", new Vector2(0, (SpawnY + FloorY) * 0.5f), new Vector2(0.04f, SpawnY - FloorY), aim, 0);
+        // darkens the board (below the cats) while a skill waits for a target
+        _dim = Quad(root, "TargetDim", panelPos, new Vector2(HalfWidth * 2, h), new Color(0f, 0f, 0f, 0.5f), -5);
+        _dim.enabled = false;
     }
 
     /// <summary>One side of the tray. Frames with bands are cut into alternating coloured segments; some have a thin accent line down the middle.</summary>
@@ -206,9 +227,18 @@ public class GameManager : MonoBehaviour
 
     // ------------------------------------------------------------------ flow
 
+    /// <summary>The theme skill of this run, fixed when the run starts or resumes (null = none). Never recomputed during play.</summary>
+    public ThemeSkillDef ActiveSkill { get; private set; }
+
+    /// <summary>Energy of the theme skills for this run. Charged in Merge, saved in the run snapshot.</summary>
+    public readonly SkillEnergy Energy = new SkillEnergy();
+
     public void NewGame()
     {
         ResetBoard();
+        ActiveSkill = SkillResolver.ForNewRun();
+        Energy.Reset();
+        Skills.Begin(ActiveSkill, SkillHandlers.Create(ActiveSkill));
         NextLevel = CatDatabase.RandomDropLevel();
         PlayerData.ClearRun();
         _ui.Refresh();
@@ -225,7 +255,10 @@ public class GameManager : MonoBehaviour
         Score = 0;
         RunCoins = 0;
         IsGameOver = false;
-        _dangerTimer = 0f;
+        _danger.Reset();
+        _hug.Active = false;                  // (same for Hug)
+        _shrink.Active = false;               // (Skills.Begin ends a running effect and restores the sizes; this keeps a restart safe on its own)
+        _rewards.SugarRushActive = false;     // (Skills.Begin ends a running effect too; this makes a restart safe on its own)
         _combo = 0;
         _lastMergeTime = -100f;
         _cooldown = 0.2f;
@@ -239,12 +272,15 @@ public class GameManager : MonoBehaviour
     void ResumeRun(RunSnapshot run)
     {
         ResetBoard();
+        ActiveSkill = SkillResolver.ForResume(run);
+        Energy.Restore(run);
+        Skills.Begin(ActiveSkill, SkillHandlers.Create(ActiveSkill));    // a timed effect is never saved: it does not come back
         Score = run.score;
         RunCoins = run.coins;
         NextLevel = run.next;
         foreach (var c in run.cats)
         {
-            var cat = Cat.Create(c.l, new Vector2(c.x, c.y), _mat, preview: false);
+            var cat = NewCat(c.l, new Vector2(c.x, c.y), preview: false);
             cat.Restore(c.r, new Vector2(c.vx, c.vy), c.w);
             _cats.Add(cat);
         }
@@ -254,7 +290,9 @@ public class GameManager : MonoBehaviour
 
     RunSnapshot BuildSnapshot()
     {
-        var run = new RunSnapshot { score = Score, next = _held != null ? _held.Level : NextLevel, coins = RunCoins };
+        var run = new RunSnapshot { score = Score, next = _held != null ? _held.Level : NextLevel, coins = RunCoins,
+                                  skillRecorded = true, activeSkillId = ActiveSkill != null ? ActiveSkill.Id : "" };
+        Energy.Save(run);
         foreach (var c in _cats)
         {
             if (c == null || !c.Dropped || c.Merging) continue;       // the cat in hand and cats about to merge are not part of the board
@@ -272,9 +310,20 @@ public class GameManager : MonoBehaviour
         PlayerData.Flush();
     }
 
+    /// <summary>The one place a cat is created. A cat that appears while Shrink is active gets the current size factor.</summary>
+    Cat NewCat(int level, Vector2 pos, bool preview)
+    {
+        var cat = Cat.Create(level, pos, _mat, preview);
+        _shrink.ApplyTo(cat);
+        return cat;
+    }
+
+    /// <summary>Bring every cat to the current Shrink factor (and hold the red-line timer during the grow-back if configured).</summary>
+    void ApplyShrink() => _shrink.Sync(Skills, _cats, _danger);
+
     void SpawnHeld()
     {
-        _held = Cat.Create(NextLevel, new Vector2(_aimX, SpawnY), _mat, preview: true);
+        _held = NewCat(NextLevel, new Vector2(_aimX, SpawnY), preview: true);
         _cats.Add(_held);
         NotifyAppear(_held.Level);
         NextLevel = CatDatabase.RandomDropLevel();
@@ -306,11 +355,18 @@ public class GameManager : MonoBehaviour
 
     void OnDestroy() { PlayerData.Flush(); }
 
+    /// <summary>Physics step: Hug's pull. Not called while the game is paused (time scale 0), and skipped explicitly after Game Over.</summary>
+    void FixedUpdate()
+    {
+        if (_hug.Active && !IsGameOver && !Paused) _hug.Step(_cats, Time.fixedDeltaTime, Time.time, DangerY);
+    }
+
     void Update()
     {
         _flushT += Time.unscaledDeltaTime;
         if (_flushT > 3f) { _flushT = 0f; SaveProgress(); }          // keep the save fresh in case the tab is just closed
 
+        _dim.enabled = Skills.IsTargeting && !IsGameOver;
         if (IsGameOver || Paused) return;
 
         if (_held == null)
@@ -322,6 +378,11 @@ public class GameManager : MonoBehaviour
         HandleInput();
         CheckDanger();
         ScanMerges();
+
+        // Game time, and only here: Pause/Settings and Game Over return above, so they stop the effect too.
+        // After CheckDanger, so the last frame of Moonlight is still covered by the hold.
+        Skills.Tick(Time.deltaTime);
+        ApplyShrink();                        // follows the skill clock, so it only moves while the game runs
     }
 
     // Safety net: two same-level cats that touch are merged by this scan (10 times a second) in case the collision event
@@ -358,6 +419,14 @@ public class GameManager : MonoBehaviour
 
     void HandleInput()
     {
+        if (Skills.IsTargeting)                  // choosing a target: no aiming or dropping at all
+        {
+            _aiming = false;                     // a press that is already down must not drop when released
+            _aimLine.enabled = false;
+            HandleTargetInput();
+            return;
+        }
+
         // Track the press even while no cat is held (cooldown). Otherwise a finger that is already
         // down when the next cat appears is ignored until the player lifts and taps again.
         bool up = Input.GetMouseButtonUp(0);
@@ -399,13 +468,83 @@ public class GameManager : MonoBehaviour
         return EventSystem.current.IsPointerOverGameObject(id);
     }
 
+    /// <summary>The HUD skill button: use the skill, start/cancel target mode.</summary>
+    public void PressSkill()
+    {
+        if (IsGameOver || Paused) return;
+        switch (Skills.Press())
+        {
+            case SkillPress.NotEnoughEnergy: Haptics.Light(); _ui.ShowSkillMessage(Loc.T("skill_need_energy").Replace("{0}", Energy.Cost.ToString())); break;
+            case SkillPress.NotImplemented: _ui.ShowSkillMessage(Loc.T("soon")); break;
+            case SkillPress.Activated: AudioManager.Instance.Discover(); Haptics.Medium(); break;
+            case SkillPress.EnteredTargeting:
+            case SkillPress.CancelledTargeting: AudioManager.Instance.Click(); break;
+        }
+    }
+
+    /// <summary>While choosing a target: a tap on a valid cat uses the skill, a tap anywhere else on the board cancels (free).</summary>
+    void HandleTargetInput()
+    {
+        if (!Input.GetMouseButtonDown(0) || PointerOverUI()) return;      // the skill button and other UI handle their own taps
+        var p = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        var cat = Eraser.CatAt(_cats, new Vector2(p.x, p.y));              // nearest cat under the finger, null = empty space
+        if (cat != null && (!cat.Dropped || cat.Merging)) return;          // the cat in hand / a cat that is merging: ignore the tap
+        if (Skills.Tap(cat) == SkillTap.InvalidTarget) { Haptics.Light(); _ui.ShowTargetRejected(); }     // the mode stays on: choose another cat
+    }
+
+    /// <summary>
+    /// Level Up: raise this cat one level. The new cat is made like a merge makes one; then it is "a cat that just appeared":
+    /// NotifyAppear is the shared claim path (the reward and the toast only come the first time that level is ever seen).
+    /// No merge score or coins, no energy.
+    /// </summary>
+    bool UpgradeCat(Cat cat)
+    {
+        if (IsGameOver || Paused || cat == null) return false;
+        var upgraded = LevelUp.TryUpgrade(_cats, cat, (level, pos) => NewCat(level, pos, preview: false), go => Destroy(go));
+        if (upgraded == null) return false;
+        Fx.Instance.Burst(upgraded.transform.position, CatDatabase.BurstColor(upgraded.Level), 8, 2.5f);
+        Haptics.Light();
+        NotifyAppear(upgraded.Level);
+        return true;
+    }
+
+    /// <summary>
+    /// Midas: sell this cat. The coins go through AddCoins, the same currency path as every other coin (PlayerData balance,
+    /// run total, HUD), and not through AddMergeReward, so Sugar Rush never multiplies them. No score, discovery or energy.
+    /// </summary>
+    bool SellCat(Cat cat)
+    {
+        if (IsGameOver || Paused || cat == null) return false;
+        Vector2 pos = cat.transform.position;
+        if (!Midas.TrySell(_cats, cat, go => Destroy(go), AddCoins)) return false;
+        Fx.Instance.Burst(pos, new Color(1f, 0.85f, 0.3f), 8, 2.5f);
+        Haptics.Light();
+        return true;
+    }
+
+    /// <summary>Eraser: remove this cat from play. No reward, no merge, no energy; false = not a valid target (nothing changed).</summary>
+    bool EraseCat(Cat cat)
+    {
+        if (IsGameOver || Paused || cat == null) return false;
+        Vector2 pos = cat.transform.position;
+        Color col = CatDatabase.BurstColor(cat.Level);
+        if (!Eraser.TryErase(_cats, cat, go => Destroy(go))) return false;
+        Fx.Instance.Burst(pos, col, 8, 2.5f);
+        Haptics.Light();
+        return true;
+    }
+
     static float PointerWorldX() => Camera.main.ScreenToWorldPoint(Input.mousePosition).x;
 
     // ------------------------------------------------------------------ merging
 
-    public void Merge(Cat a, Cat b)
+    /// <param name="source">Normal for collisions and the safety scan (including chain merges); a skill that causes a merge
+    /// directly passes MergeSource.Skill so it does not charge the energy.</param>
+    public void Merge(Cat a, Cat b, MergeSource source = MergeSource.Normal)
     {
         if (IsGameOver) return;
+        source = HugEffect.Classify(source, a, b, Time.time, out bool hugCaused);   // a pair that Hug was pulling together is skill-triggered
+        Energy.OnMerge(source);
         a.Merging = b.Merging = true;
         int level = a.Level;
         Vector2 pos = (a.transform.position + b.transform.position) * 0.5f;
@@ -431,19 +570,28 @@ public class GameManager : MonoBehaviour
 
         if (level >= CatDatabase.MaxLevel)
         {
-            AddScore(Balance.Current.maxMergeScore);   // two biggest cats: vanish for a bonus
-            AddCoins(CatDatabase.MergeCoins(CatDatabase.MaxLevel + 1));
+            AddMergeReward(Balance.Current.maxMergeScore, CatDatabase.MergeCoins(CatDatabase.MaxLevel + 1));   // two biggest cats: vanish for a bonus
             AudioManager.Instance.Fanfare();
             foreach (var c in CatDatabase.ConfettiColors) Fx.Instance.Burst(pos, c, 8, 6f, 0.2f);
             Fx.Instance.Shake(0.25f, 0.4f);
             return;
         }
 
-        var n = Cat.Create(level + 1, pos, _mat, preview: false);
+        var n = NewCat(level + 1, pos, preview: false);
         _cats.Add(n);
-        AddScore(CatDatabase.Score[level + 1]);
-        AddCoins(CatDatabase.MergeCoins(level + 1));
-        NotifyAppear(level + 1);
+        if (hugCaused) HugEffect.MarkChain(n, Time.time);     // a merge this cat makes right away is part of the same hug chain
+        AddMergeReward(CatDatabase.Score[level + 1], CatDatabase.MergeCoins(level + 1));
+        NotifyAppear(level + 1);          // discovery reward: not a merge reward, never multiplied
+    }
+
+    /// <summary>
+    /// The one place a merge pays score and coins, so Sugar Rush multiplies them exactly once. Nothing else is routed
+    /// through here: discovery rewards (NotifyAppear) and gacha refunds (Cosmetics) pay their own way, unmultiplied.
+    /// </summary>
+    void AddMergeReward(int baseScore, int baseCoins)
+    {
+        AddScore(_rewards.MergeScore(baseScore));
+        AddCoins(_rewards.MergeCoins(baseCoins));
     }
 
     void AddScore(int amount)
@@ -484,7 +632,7 @@ public class GameManager : MonoBehaviour
             if (f.transform.position.y + f.Radius > DangerY && f.Speed < 0.6f) { danger = true; break; }
         }
 
-        _dangerTimer = danger ? _dangerTimer + Time.deltaTime : 0f;
+        _danger.Step(danger, Time.deltaTime);   // frozen while a pause reason (Moonlight) is active
 
         // scared faces + warning tick while in danger
         foreach (var f in _cats) if (f != null) f.Worried = danger;
@@ -500,12 +648,14 @@ public class GameManager : MonoBehaviour
         float pulse = danger ? 0.45f + 0.45f * Mathf.Abs(Mathf.Sin(Time.time * 8f)) : 0.45f;
         _dangerLine.color = new Color(0.9f, 0.2f, 0.2f, pulse);
 
-        if (_dangerTimer >= GameOverDelay) GameOver();
+        if (_danger.Reached(GameOverDelay)) GameOver();
     }
 
     void GameOver()
     {
         IsGameOver = true;
+        Skills.Lock();
+        Energy.Freeze();
         _aimLine.enabled = false;
         if (_held != null) { Destroy(_held.gameObject); _held = null; }
         AudioManager.Instance.GameOver();

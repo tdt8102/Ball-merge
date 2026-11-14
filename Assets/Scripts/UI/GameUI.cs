@@ -73,6 +73,8 @@ public class GameUI : MonoBehaviour
             Img(root, "Chain" + i, CatSprites.Icon(i), Color.white, new Vector2(0.5f, 0), new Vector2(startX + i * slot, 70f), new Vector2(size, size));
         }
 
+        BuildSkill(root);       // before the game-over panel, so that panel covers (and blocks) the button
+
         // --- game over panel ---
         _gameOver = new GameObject("GameOver", typeof(RectTransform), typeof(Image));
         var go = (RectTransform)_gameOver.transform;
@@ -108,6 +110,182 @@ public class GameUI : MonoBehaviour
                     _lastError = msg.Length > 120 ? msg.Substring(0, 120) : msg;
             };
         }
+    }
+
+    // ---------------------------------------------------------------- theme skill HUD
+
+    // The button (ring = energy, or the time left of a timed effect; a pill under it says what is going on), the line shown while a
+    // target is being chosen (hint + CANCEL) and the placement that keeps all of it off NEXT and off the drop area (HudLayout).
+    RectTransform _skillRoot, _skillBody, _banner;
+    Image _skillBg, _skillRing, _skillIcon, _badgeBg;
+    Button _skillBtn;
+    Text _badge, _bannerText;
+    float _badgeMsgT = -1f, _rejectT = -1f, _shakeT = -1f;
+    string _badgeMsg = "";
+    int _skillIconTheme = -1;
+    Vector2 _layoutKey;
+    HudLayout.Layout _layout;
+
+    public RectTransform SkillRect => _skillRoot;
+    public RectTransform BannerRect => _banner;
+    public HudLayout.Layout CurrentLayout => _layout;
+
+    static readonly Color BadgeColor = new Color(0.3f, 0.19f, 0.12f, 0.92f);
+
+    void BuildSkill(RectTransform root)
+    {
+        var c = new Vector2(0.5f, 0.5f);
+        var topLeft = new Vector2(0, 1);
+        var go = new GameObject("SkillButton", typeof(RectTransform));
+        _skillRoot = (RectTransform)go.transform;
+        _skillRoot.SetParent(root, false);
+        _skillRoot.anchorMin = _skillRoot.anchorMax = topLeft;
+        _skillRoot.pivot = topLeft;
+        _skillRoot.sizeDelta = new Vector2(HudLayout.BadgeWidth, HudLayout.GroupHeight);
+
+        var body = new GameObject("Body", typeof(RectTransform));        // the part that shakes
+        _skillBody = (RectTransform)body.transform;
+        _skillBody.SetParent(_skillRoot, false);
+        _skillBody.anchorMin = _skillBody.anchorMax = topLeft;
+        _skillBody.pivot = topLeft;
+        _skillBody.sizeDelta = _skillRoot.sizeDelta;
+        _skillBody.anchoredPosition = Vector2.zero;
+
+        var ringCenter = new Vector2(HudLayout.BadgeWidth * 0.5f, -HudLayout.RingSize * 0.5f);
+        _skillBg = Img(_skillBody, "Bg", SpriteFactory.Circle, new Color(0.45f, 0.3f, 0.2f), topLeft, ringCenter, new Vector2(HudLayout.RingSize * 0.77f, HudLayout.RingSize * 0.77f));
+        _skillBg.raycastTarget = true;
+        _skillBtn = _skillBg.gameObject.AddComponent<Button>();
+        _skillBtn.transition = Selectable.Transition.None;
+        _skillBtn.onClick.AddListener(() => _gm.PressSkill());
+        _skillIcon = Img(_skillBody, "Icon", null, Color.white, topLeft, ringCenter, new Vector2(HudLayout.RingSize * 0.54f, HudLayout.RingSize * 0.54f));
+        _skillRing = Img(_skillBody, "Ring", SpriteFactory.Ring, Color.white, topLeft, ringCenter, new Vector2(HudLayout.RingSize, HudLayout.RingSize));
+        _skillRing.type = Image.Type.Filled;
+        _skillRing.fillMethod = Image.FillMethod.Radial360;
+        _skillRing.fillOrigin = (int)Image.Origin360.Top;
+        _skillRing.fillClockwise = true;
+
+        float badgeY = -(HudLayout.RingSize + HudLayout.BadgeGap + HudLayout.BadgeHeight * 0.5f);
+        _badgeBg = RoundImg(_skillBody, "Badge", BadgeColor, topLeft, new Vector2(HudLayout.BadgeWidth * 0.5f, badgeY), new Vector2(HudLayout.BadgeWidth, HudLayout.BadgeHeight), HudLayout.BadgeHeight * 0.5f);
+        _badge = Label((RectTransform)_badgeBg.transform, "Text", "", 22, TextAnchor.MiddleCenter, c, Vector2.zero, new Vector2(HudLayout.BadgeWidth, HudLayout.BadgeHeight));
+        _badge.color = Color.white;
+
+        // target mode: one line above the playfield with the hint and a CANCEL button (the dark board overlay is GameManager's)
+        var bannerImg = RoundImg(root, "TargetBanner", new Color(0.25f, 0.15f, 0.1f, 0.9f), topLeft, Vector2.zero, new Vector2(800, HudLayout.BannerHeight), 30f);
+        _banner = bannerImg.rectTransform;
+        _banner.pivot = c;
+        _bannerText = Label(_banner, "Hint", "", 30, TextAnchor.MiddleCenter, c, Vector2.zero, new Vector2(560, HudLayout.BannerHeight));
+        _bannerText.color = Color.white;
+        var cancel = Button(_banner, "Cancel", "", 28, c, Vector2.zero, new Vector2(170, 46), new Color(0.85f, 0.35f, 0.3f));
+        Loc.Bind(cancel, () => Loc.T("skill_cancel"));
+        cancel.onClick.AddListener(() => _gm.PressSkill());             // pressing the skill while choosing a target is the free cancel
+        _banner.gameObject.SetActive(false);
+
+        _skillRoot.gameObject.SetActive(false);
+    }
+
+    /// <summary>Put the skill button and the target line where HudLayout says, for a canvas of this size.</summary>
+    public HudLayout.Layout ApplyLayout(float canvasW, float canvasH)
+    {
+        float maxDrop = 0f;
+        foreach (int level in Balance.Current.dropBag) maxDrop = Mathf.Max(maxDrop, CatDatabase.Radius[level]);
+        _layout = HudLayout.Compute(canvasW, canvasH, GameManager.CameraHalfHeight(canvasW / canvasH), maxDrop);
+
+        _skillRoot.anchoredPosition = new Vector2(_layout.Group.L, -_layout.Group.T);
+        var b = _layout.Banner;
+        _banner.anchoredPosition = new Vector2((b.L + b.R) * 0.5f, -(b.T + b.B) * 0.5f);
+        _banner.sizeDelta = new Vector2(b.Width, b.Height);
+        float cancelW = 170f, pad = 18f;
+        var hint = _bannerText.rectTransform;
+        hint.sizeDelta = new Vector2(b.Width - cancelW - pad * 3f, b.Height);
+        hint.anchoredPosition = new Vector2(-(cancelW + pad) * 0.5f, 0f);
+        _banner.Find("Cancel").GetComponent<RectTransform>().anchoredPosition = new Vector2(b.Width * 0.5f - pad - cancelW * 0.5f, 0f);
+        return _layout;
+    }
+
+    /// <summary>A short note in the pill under the button (e.g. NEED 100%), with a small shake.</summary>
+    public void ShowSkillMessage(string text)
+    {
+        _badgeMsg = text;
+        _badgeMsgT = 0f;
+        _shakeT = 0f;
+    }
+
+    /// <summary>The tapped cat cannot be chosen: say so on the target line for a moment (the target mode stays on).</summary>
+    public void ShowTargetRejected() => _rejectT = 0f;
+
+    /// <summary>Every frame: show the button only when the run has a skill; ring = energy (gold and pulsing when ready) or time left.</summary>
+    void UpdateSkill()
+    {
+        var skill = _gm.ActiveSkill;
+        var rt = _gm.Skills;
+        bool show = skill != null;
+        if (_skillRoot.gameObject.activeSelf != show) _skillRoot.gameObject.SetActive(show);
+        if (!show) { _banner.gameObject.SetActive(false); return; }
+
+        var canvasSize = ((RectTransform)transform).rect.size;
+        if (canvasSize.x > 1f && canvasSize.y > 1f && canvasSize != _layoutKey) { _layoutKey = canvasSize; ApplyLayout(canvasSize.x, canvasSize.y); }
+
+        var theme = skill.Theme;
+        if (theme != null && theme.Index != _skillIconTheme)
+        {
+            _skillIconTheme = theme.Index;
+            _skillIcon.sprite = CosmeticUI.SkillIcon(skill);
+        }
+
+        bool dead = _gm.IsGameOver;
+        float dt = Time.unscaledDeltaTime;
+        float fill;
+        Color ring;
+        string badge;
+        Color badgeColor = Color.white;
+        if (rt.IsTimedActive)
+        {
+            fill = rt.TimedRemaining / Mathf.Max(0.01f, rt.TimedDuration);
+            ring = new Color(0.45f, 0.75f, 1f);
+            badge = Mathf.CeilToInt(rt.TimedRemaining) + "s";
+            badgeColor = new Color(0.65f, 0.85f, 1f);
+        }
+        else
+        {
+            fill = _gm.Energy.Value / (float)Mathf.Max(1, _gm.Energy.Max);
+            ring = rt.Ready ? new Color(1f, 0.85f, 0.3f, 0.65f + 0.35f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f)))
+                            : new Color(1f, 1f, 1f, 0.45f);
+            badge = rt.Ready ? Loc.T("skill_ready") : _gm.Energy.Value + "%";
+            if (rt.Ready) badgeColor = new Color(1f, 0.85f, 0.3f);
+        }
+        if (rt.IsTargeting && !dead) { badge = Loc.T("skill_cancel"); badgeColor = new Color(1f, 0.6f, 0.4f); }
+        if (_badgeMsgT >= 0f)
+        {
+            _badgeMsgT += dt;
+            if (_badgeMsgT >= 1.4f) _badgeMsgT = -1f;
+            else { badge = _badgeMsg; badgeColor = new Color(1f, 0.5f, 0.4f); }
+        }
+        _skillRing.fillAmount = fill;
+        _skillRing.color = ring;
+        _badge.text = badge;
+        _badge.color = badgeColor;
+        _skillBg.color = rt.IsTargeting ? new Color(0.95f, 0.6f, 0.2f) : new Color(0.45f, 0.3f, 0.2f);
+        _skillIcon.color = new Color(1f, 1f, 1f, dead ? 0.35f : (rt.Ready || rt.IsTimedActive || rt.IsTargeting ? 1f : 0.55f));
+        _skillBtn.interactable = !dead;
+
+        if (_shakeT >= 0f)
+        {
+            _shakeT += dt;
+            float k = Mathf.Clamp01(_shakeT / 0.35f);
+            _skillBody.anchoredPosition = new Vector2(Mathf.Sin(_shakeT * 70f) * 9f * (1f - k), 0f);
+            if (_shakeT >= 0.35f) { _shakeT = -1f; _skillBody.anchoredPosition = Vector2.zero; }
+        }
+
+        bool targeting = rt.IsTargeting && !dead;
+        if (_banner.gameObject.activeSelf != targeting) _banner.gameObject.SetActive(targeting);
+        if (targeting)
+        {
+            bool rejected = _rejectT >= 0f;
+            if (rejected) { _rejectT += dt; if (_rejectT >= 1.2f) { _rejectT = -1f; rejected = false; } }
+            _bannerText.text = rejected ? Loc.T("skill_bad_target") : Loc.T("skill_tap_cat");
+            _bannerText.color = rejected ? new Color(1f, 0.7f, 0.45f) : Color.white;
+        }
+        else _rejectT = -1f;
     }
 
     // ---------------------------------------------------------------- settings (gear button + popup)
@@ -161,6 +339,7 @@ public class GameUI : MonoBehaviour
             }
         }
 
+        UpdateSkill();
         UpdateToast();
         if (_coinPop > 0f)
         {
@@ -211,14 +390,21 @@ public class GameUI : MonoBehaviour
     // ---------------------------------------------------------------- coin chip and "new cat" banner
 
     /// <summary>Small pill with a coin icon and the coin total. Returns the amount text; chip is the pill (for bump animation).</summary>
-    public static Text CoinChip(RectTransform parent, Vector2 anchor, Vector2 pos, out RectTransform chip)
+    public static Text CoinChip(RectTransform parent, Vector2 anchor, Vector2 pos, out RectTransform chip) =>
+        Chip(parent, "CoinChip", CatSprites.CoinIcon(), PlayerData.Coins.ToString(), anchor, pos, out chip);
+
+    /// <summary>The same pill for star shards (blue star icon).</summary>
+    public static Text ShardChip(RectTransform parent, Vector2 anchor, Vector2 pos, out RectTransform chip) =>
+        Chip(parent, "ShardChip", CatSprites.ShardIcon(), PlayerData.Shards.ToString(), anchor, pos, out chip);
+
+    static Text Chip(RectTransform parent, string name, Sprite icon, string amount, Vector2 anchor, Vector2 pos, out RectTransform chip)
     {
-        var border = RoundImg(parent, "CoinChip", new Color(0.55f, 0.36f, 0.24f), anchor, pos, new Vector2(250, 72), 36f);
+        var border = RoundImg(parent, name, new Color(0.55f, 0.36f, 0.24f), anchor, pos, new Vector2(250, 72), 36f);
         chip = border.rectTransform;
         var cr = (RectTransform)border.transform;
         RoundImg(cr, "Fill", new Color(1f, 0.97f, 0.9f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(242, 64), 32f);
-        Img(cr, "Coin", CatSprites.CoinIcon(), Color.white, new Vector2(0, 0.5f), new Vector2(40, 0), new Vector2(54, 54));
-        var t = Label(cr, "Amount", PlayerData.Coins.ToString(), 40, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(76, 0), new Vector2(165, 60));
+        Img(cr, "Icon", icon, Color.white, new Vector2(0, 0.5f), new Vector2(40, 0), new Vector2(54, 54));
+        var t = Label(cr, "Amount", amount, 40, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(76, 0), new Vector2(165, 60));
         t.color = new Color(0.36f, 0.22f, 0.15f);
         return t;
     }
